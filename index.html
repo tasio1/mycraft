@@ -2241,13 +2241,22 @@ class World {
     const dd=Math.max(Math.abs(x-s.x),Math.abs(z-s.z)); if(dd<=s.R+1) return s.y0; if(dd>=s.R+9) return h;
     const t=(dd-s.R-1)/8; return Math.round(s.y0+(h-s.y0)*t);
   }
-  roadRects(rx,rz){
+  roadLinks(rx,rz){
     if(!this.rcc) this.rcc=new Map(); const key=rx+','+rz; if(this.rcc.has(key)) return this.rcc.get(key);
-    const out=[], A=this.settle(rx,rz);
-    if(A){ const B=this.settle(rx+1,rz), C=this.settle(rx,rz+1);
-      if(B){ out.push({x0:Math.min(A.x,B.x),z0:A.z-2,x1:Math.max(A.x,B.x),z1:A.z+2,ax:0,c:A.z}, {x0:B.x-2,z0:Math.min(A.z,B.z),x1:B.x+2,z1:Math.max(A.z,B.z),ax:1,c:B.x}); }
-      if(C){ out.push({x0:A.x-2,z0:Math.min(A.z,C.z),x1:A.x+2,z1:Math.max(A.z,C.z),ax:1,c:A.x}, {x0:Math.min(A.x,C.x),z0:C.z-2,x1:Math.max(A.x,C.x),z1:C.z+2,ax:0,c:C.z}); } }
+    const out=[], A=this.settle(rx,rz), first=l=>{ for(const [a,b] of l){ const t=this.settle(a,b); if(t) return t; } return null; };
+    const mk=(B,vert)=>{ if(!B) return; const rects=[], pts=vert?[[A.x,A.z],[A.x,B.z],[B.x,B.z]]:[[A.x,A.z],[B.x,A.z],[B.x,B.z]];
+      if(!vert){ rects.push({x0:Math.min(A.x,B.x),z0:A.z-2,x1:Math.max(A.x,B.x),z1:A.z+2,ax:0,c:A.z},{x0:B.x-2,z0:Math.min(A.z,B.z),x1:B.x+2,z1:Math.max(A.z,B.z),ax:1,c:B.x}); }
+      else { rects.push({x0:A.x-2,z0:Math.min(A.z,B.z),x1:A.x+2,z1:Math.max(A.z,B.z),ax:1,c:A.x},{x0:Math.min(A.x,B.x),z0:B.z-2,x1:Math.max(A.x,B.x),z1:B.z+2,ax:0,c:B.z}); }
+      const cum=[0]; for(let k=1;k<pts.length;k++) cum.push(cum[k-1]+Math.hypot(pts[k][0]-pts[k-1][0],pts[k][1]-pts[k-1][1]));
+      out.push({u:A,v:B,pts,cum,rects}); };
+    if(A){ mk(first([[rx+1,rz],[rx+1,rz+1],[rx+1,rz-1]]),false); mk(first([[rx,rz+1],[rx-1,rz+1],[rx+1,rz+1]]),true); }
     this.rcc.set(key,out); return out;
+  }
+  roadRects(rx,rz){ const o=[]; for(const l of this.roadLinks(rx,rz)) o.push(...l.rects); return o; }
+  roadY(x,z){
+    if(!this.ry) this.ry=new Map(); if(this.ry.size>60000) this.ry.clear(); const k=x+','+z, c=this.ry.get(k); if(c!==undefined) return c;
+    let sum=this.groundH(x,z), n=1; for(let o=-8;o<=8;o+=4){ if(!o) continue; sum+=this.groundH(x+o,z)+this.groundH(x,z+o); n+=2; }
+    const y=Math.max(SEA_LEVEL+1,Math.round(sum/n)); this.ry.set(k,y); return y;
   }
   inSettle(x,z){ const s=this.settleAt(x,z); return !!s&&Math.max(Math.abs(x-s.x),Math.abs(z-s.z))<=s.R+10; }
   settlePlan(s){
@@ -2295,8 +2304,9 @@ class World {
     // -- rural roads (skipped inside settlement footprints; those have their own streets)
     for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){ for(const r of this.roadRects(rx+a,rz+b)){ if(!hit(r.x0,r.z0,r.x1,r.z1,1)) continue; busy=true;
       for(let z=Math.max(r.z0,Z0);z<=Math.min(r.z1,Z0+15);z++) for(let x=Math.max(r.x0,X0);x<=Math.min(r.x1,X0+15);x++){
-        if(inFoot(x,z)) continue; const lx=x-X0, lz=z-Z0, ci=lz*CS+lx; let y=hs[ci]; const top=Math.max(y,SEA_LEVEL+1);
+        if(inFoot(x,z)) continue; const lx=x-X0, lz=z-Z0, ci=lz*CS+lx; let y=hs[ci]; const top=this.roadY(x,z);
         for(let yy=y+1;yy<top;yy++) d[yy*256+ci]=(yy<=SEA_LEVEL?B.COBBLE:B.DIRT);
+        for(let yy=Math.min(CH-1,y);yy>top;yy--) d[yy*256+ci]=B.AIR;
         const mid=r.ax===0?(z===r.c):(x===r.c), dash=r.ax===0?(((x%8)+8)%8<4):(((z%8)+8)%8<4);
         d[top*256+ci]=(mid&&dash)?B.ROAD_LINE:B.ASPHALT; for(let yy=top+1;yy<=Math.min(CH-1,top+3);yy++){ const i=yy*256+ci; if(d[i]===B.WATER||d[i]===B.LOG||d[i]===B.LEAVES) d[i]=B.AIR; } clearTop(lx,lz,top); hs[ci]=top; } } }
     // -- the settlement itself
@@ -2310,7 +2320,7 @@ class World {
         if(o.t==='r'){ for(let z=Math.max(o.z0,Z0);z<=Math.min(o.z1,Z0+15);z++)for(let x=Math.max(o.x0,X0);x<=Math.min(o.x1,X0+15);x++) put(x,y0,z,o.id); }
         else if(o.t==='lamp'){ for(let h=1;h<=4;h++) put(o.x0,y0+h,o.z0,B.IRON_BLOCK); put(o.x0,y0+5,o.z0,B.LAMP); }
         else if(o.t==='fountain'){ for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++){ const edge=Math.max(Math.abs(a),Math.abs(b))===2; put(o.x0+a,y0+1,o.z0+b,edge?B.COBBLE:B.AIR); put(o.x0+a,y0,o.z0+b,edge?B.COBBLE:B.WATER); }
-          for(let h=1;h<=3;h++) put(o.x0,y0+h,o.z0,B.STONE_BRICKS); put(o.x0,y0+4,o.z0,B.GLOWSTONE); }
+          put(o.x0,y0,o.z0,B.WATER); }
         else if(o.t==='tree'){ for(let h=1;h<=4;h++) put(o.x0,y0+h,o.z0,B.LOG); for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++)for(let h=3;h<=6;h++){ if(Math.abs(a)+Math.abs(b)+(h-3)*.7>3.4) continue; if(!(a===0&&b===0&&h<=4)) put(o.x0+a,y0+h,o.z0+b,B.LEAVES); } }
         else if(o.t==='park'){ for(let z=o.z0;z<=o.z1;z++)for(let x=o.x0;x<=o.x1;x++){ put(x,y0,z,B.GRASS); }
           for(let n=0;n<3;n++){ const tx=o.x0+2+Math.floor(this.hash(o.seed+n,5)*6), tz=o.z0+2+Math.floor(this.hash(o.seed+n*7,9)*6); for(let h=1;h<=5;h++) put(tx,y0+h,tz,B.LOG); for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++)for(let h=4;h<=7;h++){ if(Math.abs(a)+Math.abs(b)+(h-4)*.8>3.5) continue; put(tx+a,y0+h,tz+b,B.LEAVES); } }
@@ -2399,7 +2409,7 @@ class World {
       }
       for(let y=gh+1;y<=top;y++) put(lx,y,lz,B.LOG,false);
     }
-    const busyT=this.placeSettlements(ch,hs); if(!busyT) this.placeHouses(ch,hs); this.carveMines(ch,d); this.placeTreasures(ch,hs);
+    this.carveMines(ch,d); const busyT=this.placeSettlements(ch,hs); if(!busyT) this.placeHouses(ch,hs); this.placeTreasures(ch,hs);
     // apply persisted player edits
     const m=this.mods.get(cx+','+cz);
     if(m) for(const [i,id] of m) d[i]=id;
@@ -3944,12 +3954,50 @@ function gpsOrder(start,targets,homeLast){
   let imp=true, guard=0; while(imp&&guard++<50){ imp=false; for(let i=0;i<order.length-1;i++) for(let j=i+1;j<order.length;j++){ const t=order.slice(0,i).concat(order.slice(i,j+1).reverse(),order.slice(j+1)); if(len(t)<len(order)-1e-6){ order.splice(0,order.length,...t); imp=true; } } }
   if(home) order.push(home); return order;
 }
+
+// ---- follow the roads: enter the road network near the start, drive along it, leave near the goal
+function gpsRoadVia(sx,sz,tx,tz){
+  if(Math.hypot(tx-sx,tz-sz)<150) return null;
+  const rx0=Math.floor(Math.min(sx,tx)/192)-1, rx1=Math.floor(Math.max(sx,tx)/192)+1, rz0=Math.floor(Math.min(sz,tz)/192)-1, rz1=Math.floor(Math.max(sz,tz)/192)+1;
+  if((rx1-rx0+1)*(rz1-rz0+1)>400) return null;
+  const links=[]; for(let a=rx0;a<=rx1;a++)for(let b=rz0;b<=rz1;b++) links.push(...world.roadLinks(a,b));
+  if(!links.length) return null;
+  const near=(px,pz)=>{ let best=null; for(const L of links){ for(let k=1;k<L.pts.length;k++){ const [ax,az]=L.pts[k-1], [bx,bz]=L.pts[k], dx=bx-ax, dz=bz-az, l2=dx*dx+dz*dz||1; let t=clamp(((px-ax)*dx+(pz-az)*dz)/l2,0,1); const x=ax+dx*t, z=az+dz*t, d=Math.hypot(px-x,pz-z);
+      if(!best||d<best.d) best={d,L,x,z,s:L.cum[k-1]+Math.hypot(dx,dz)*t,k}; } } return best; };
+  const E=near(sx,sz), X=near(tx,tz); if(!E||!X||E.d>260||X.d>260) return null;
+  const key=n=>n.rx+','+n.rz, dist=new Map(), prev=new Map(), done=new Set(), nodes=new Map();
+  for(const L of links){ nodes.set(key(L.u),L.u); nodes.set(key(L.v),L.v); }
+  const adj=new Map(); for(const L of links){ for(const [a,b] of [[L.u,L.v],[L.v,L.u]]){ const k=key(a); if(!adj.has(k)) adj.set(k,[]); adj.get(k).push({to:key(b),L,len:L.cum[L.cum.length-1],fw:a===L.u}); } }
+  const relax=(k,d,p)=>{ if(!dist.has(k)||d<dist.get(k)){ dist.set(k,d); prev.set(k,p); } };
+  const tot=E.L.cum[E.L.cum.length-1]; relax(key(E.L.u),E.s,{start:true,L:E.L,end:'u'}); relax(key(E.L.v),tot-E.s,{start:true,L:E.L,end:'v'});
+  for(;;){ let bk=null,bd=1e18; for(const [k,d] of dist) if(!done.has(k)&&d<bd){ bd=d; bk=k; } if(bk===null) break; done.add(bk); for(const e of (adj.get(bk)||[])) relax(e.to,bd+e.len,{from:bk,L:e.L,fw:e.fw}); }
+  const totX=X.L.cum[X.L.cum.length-1];
+  const cu=dist.get(key(X.L.u)), cv=dist.get(key(X.L.v)); let endNode=null, best=1e18;
+  if(cu!==undefined&&cu+X.s<best){ best=cu+X.s; endNode='u'; } if(cv!==undefined&&cv+totX-X.s<best){ best=cv+totX-X.s; endNode='v'; }
+  const same=E.L===X.L, direct=Math.abs(E.s-X.s);
+  const pts=[]; const along=(L,s0,s1)=>{ // vertices strictly between s0 and s1 (in travel order)
+    const idx=[]; for(let k=0;k<L.pts.length;k++) if(L.cum[k]>Math.min(s0,s1)+.5&&L.cum[k]<Math.max(s0,s1)-.5) idx.push(k); if(s1<s0) idx.reverse(); return idx.map(k=>L.pts[k]); };
+  pts.push([E.x,E.z]);
+  if(same&&(direct<=best||endNode===null)){ pts.push(...along(E.L,E.s,X.s)); }
+  else { if(endNode===null) return null;
+    // rebuild node chain
+    const chain=[]; let k=endNode==='u'?key(X.L.u):key(X.L.v); while(k!==undefined){ const p=prev.get(k); if(!p) break; chain.push({k,p}); if(p.start) break; k=p.from; } chain.reverse();
+    for(const c of chain){ const L=c.p.L; if(c.p.start){ const toU=c.p.end==='u'; pts.push(...along(L,E.s,toU?0:L.cum[L.cum.length-1])); pts.push(toU?L.pts[0]:L.pts[L.pts.length-1]); }
+      else { const seq=c.p.fw?L.pts:[...L.pts].reverse(); pts.push(...seq.slice(1)); } }
+    const L=X.L, endAtU=endNode==='u'; pts.push(...along(L,endAtU?0:totX,X.s)); }
+  pts.push([X.x,X.z]);
+  return {pts,len:best<1e17?best+E.d+X.d:direct+E.d+X.d};
+}
 function gpsPlan(targets,best){   // builds GPS.route from real targets; best=true also finds the shortest order
   const v=driving, me={x:v?v.x:player.pos.x,z:v?v.z:player.pos.z}, kind=gpsKind();
   if(!targets.length){ GPS.route=[]; gpsBeacons(); return; }
   const list=best&&targets.length>1?gpsOrder(me,targets,GPS.home&&targets[targets.length-1]===GPS.home):targets;
   const route=[]; let cur=[me.x,me.z], total=0, miss=0;
-  for(const T of list){ const via=gpsPath(kind,cur[0],cur[1],T.x,T.z); if(via===null){ miss++; total+=Math.hypot(T.x-cur[0],T.z-cur[1]); }
+  for(const T of list){ let via=gpsPath(kind,cur[0],cur[1],T.x,T.z);
+    if(kind==='ground'){ const rv=gpsRoadVia(cur[0],cur[1],T.x,T.z); if(rv){ let dl=Infinity; if(via!==null){ dl=0; let c=cur; for(const q of via){ dl+=Math.hypot(q[0]-c[0],q[1]-c[1]); c=q; } dl+=Math.hypot(T.x-c[0],T.z-c[1]); }
+        if(via===null||rv.len<=dl*1.6){ const a1=gpsPath(kind,cur[0],cur[1],rv.pts[0][0],rv.pts[0][1])||[], a2=gpsPath(kind,rv.pts[rv.pts.length-1][0],rv.pts[rv.pts.length-1][1],T.x,T.z)||[];
+          const dense=[]; let pc=cur; for(const q of [...a1,...rv.pts,...a2]){ const dd=Math.hypot(q[0]-pc[0],q[1]-pc[1]), n=Math.max(1,Math.floor(dd/50)); for(let i=1;i<=n;i++) dense.push([pc[0]+(q[0]-pc[0])*i/n,pc[1]+(q[1]-pc[1])*i/n]); pc=q; } via=dense; } } }
+    if(via===null){ miss++; total+=Math.hypot(T.x-cur[0],T.z-cur[1]); }
     else { for(const q of via){ route.push({x:q[0],z:q[1],n:'turn',via:true}); total+=0; } let c=cur; for(const q of via){ total+=Math.hypot(q[0]-c[0],q[1]-c[1]); c=q; } total+=Math.hypot(T.x-c[0],T.z-c[1]); }
     route.push(T); cur=[T.x,T.z]; }
   GPS.route=route; gpsBeacons();
