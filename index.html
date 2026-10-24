@@ -3785,11 +3785,11 @@ function gpsUI(v){
   else h+='<div style="margin:4px 0;opacity:.8">No trip. Drive somewhere, press B to add a stop, H to set home, N to go.</div>';
   const list=[...GPS.stops.map(p=>p), ...(GPS.home?[GPS.home]:[])];
   if(list.length) h+=list.map(p=>(GPS.route[0]===p?'<span style="color:#ffa726">&#9654; ':'<span>&nbsp;&nbsp;')+p.n+(p===GPS.home?' &#127968;':'')+'</span>').join('<br>');
-  GPS.tx.innerHTML=h; e.style.display='block'; GMAP.tick-=0; const now=performance.now(); if(!GPS.mt||now-GPS.mt>350){ GPS.mt=now; gmScan(2); gmChunk(Math.floor(v.x)>>4,Math.floor(v.z)>>4,false); gmDraw(GPS.mc,GPS.mc.getContext('2d'),v.x,v.z,v.t==='plane'||v.t==='liner'?2:1,true,false); }
+  GPS.tx.innerHTML=h; e.style.display='block'; GMAP.tick-=0; const now=performance.now(); if(!GPS.mt||now-GPS.mt>350){ GPS.mt=now; gmScan(2); gmChunk(Math.floor(v.x)>>4,Math.floor(v.z)>>4,false); gmDraw(GPS.mc,GPS.mc.getContext('2d'),v.x,v.z,v.t==='plane'||v.t==='liner'||v.t==='heli'?4:2,true,false); }
 }
 
 // ---- GPS MAP: top-down map of the explored world (key M, also on foot). Tap/click to drop a pin, drag to move, wheel/+/- to zoom.
-const GMAP={cache:new Map(),colTab:null,open:false,cx:0,cz:0,zoom:1,sel:null,el:null,cv:null,ctx:null,callout:null,drag:null,tick:0,PX:640};
+const GMAP={tiles:new Map(),budget:0,missing:false,cache:new Map(),colTab:null,open:false,cx:0,cz:0,zoom:4,sel:null,el:null,cv:null,ctx:null,callout:null,drag:null,tick:0,PX:640};
 function gmColor(id){
   if(!GMAP.colTab){ GMAP.colTab=new Uint32Array(2048); GMAP.colTab.fill(0xff7a8f9a); }
   const t=GMAP.colTab; if(t[id]!==0xff7a8f9a&&t[id]) return t[id]; if(!BLOCKS[id]){ return t[id]=0xff7a8f9a; }
@@ -3806,26 +3806,40 @@ function gmChunk(cx,cz,force){
   const k=cx+','+cz; let e=GMAP.cache.get(k); const now=performance.now();
   if(e&&!force&&now-e.t<6000) return e;
   if(!world||!world.chunks.has(k)) return e||null;
-  if(!e){ e={c:new Uint32Array(256),h:new Uint8Array(256),t:0}; GMAP.cache.set(k,e); }
+  if(!e){ e={c:new Uint32Array(256),h:new Uint8Array(256),t:0,cv:document.createElement('canvas')}; e.cv.width=e.cv.height=16; GMAP.cache.set(k,e); }
   for(let z=0;z<16;z++) for(let x=0;x<16;x++){ const wx=cx*16+x, wz=cz*16+z; let y=CH-1, id=0;
-    for(;y>=0;y--){ id=world.getBlock(wx,y,wz); if(id!==B.AIR&&!(BLOCKS[id]&&BLOCKS[id].leafy&&false)) break; }
+    for(;y>=0;y--){ id=world.getBlock(wx,y,wz); if(id!==B.AIR) break; }
     e.c[z*16+x]=gmColor(id); e.h[z*16+x]=Math.max(0,y); }
-  e.t=now; return e;
+  const cx2=e.cv.getContext('2d'), img=cx2.createImageData(16,16), d=new Uint32Array(img.data.buffer);
+  for(let i=0;i<256;i++){ const c=e.c[i], hw=(i&15)>0?e.h[i-1]:e.h[i], dh=e.h[i]-hw, sh=dh>0?1.12:dh<0?0.86:1;
+    d[i]=0xff000000|(Math.min(255,((c>>16)&255)*sh)<<16)|(Math.min(255,((c>>8)&255)*sh)<<8)|Math.min(255,(c&255)*sh); }
+  cx2.putImageData(img,0,0); e.t=now; return e;
 }
 function gmScan(budget){   // keep exploring: cache the loaded chunks around the player (a few per call)
   if(!world||!player) return; const pcx=Math.floor(player.pos.x)>>4, pcz=Math.floor(player.pos.z)>>4; let n=0;
   for(let r=0;r<=10&&n<budget;r++) for(let dz=-r;dz<=r&&n<budget;dz++) for(let dx=-r;dx<=r&&n<budget;dx++){ if(Math.max(Math.abs(dx),Math.abs(dz))!==r) continue; const k=(pcx+dx)+','+(pcz+dz); if(!GMAP.cache.has(k)&&world.chunks.has(k)){ gmChunk(pcx+dx,pcz+dz,true); n++; } }
 }
+function gmTile(bpp,tx,tz){
+  const k=bpp+'|'+tx+'|'+tz; let t=GMAP.tiles.get(k); if(t) return t; if(GMAP.budget<=0){ GMAP.missing=true; return null; } GMAP.budget--;
+  const cs=bpp*4, N=64, x0=tx*N*cs, z0=tz*N*cs, hs=new Int16Array((N+1)*(N+1)), SL=SEA_LEVEL;
+  for(let j=0;j<=N;j++) for(let i=0;i<=N;i++) hs[j*(N+1)+i]=world.heightAt(Math.floor(x0+i*cs),Math.floor(z0+j*cs));
+  const cvs=document.createElement('canvas'); cvs.width=cvs.height=N; const c2=cvs.getContext('2d'), img=c2.createImageData(N,N), d=img.data;
+  for(let j=0;j<N;j++) for(let i=0;i<N;i++){ const h=hs[j*(N+1)+i], hn=hs[(j+1)*(N+1)+i+1]; let r,g,b;
+    if(h<=SL){ const dp=clamp((SL-h)/14,0,1); r=74-45*dp; g=163-84*dp; b=224-66*dp; }
+    else { const sh=clamp(1+(h-hn)*0.07,.75,1.25);
+      if(h<=SL+1){ r=226;g=210;b=142; } else if(h>=52){ r=242;g=246;b=250; } else if(h>=46){ r=139;g=143;b=147; } else if(h>=36){ r=75;g=138;b=52; } else if(h<=SL+5){ r=120;g=184;b=74; } else { r=94;g=160;b=58; }
+      r=Math.min(255,r*sh); g=Math.min(255,g*sh); b=Math.min(255,b*sh); }
+    const o=(j*N+i)*4; d[o]=r; d[o+1]=g; d[o+2]=b; d[o+3]=255; }
+  c2.putImageData(img,0,0); t=cvs; GMAP.tiles.set(k,t); return t;
+}
 function gmDraw(cv,ctx,cx,cz,bpp,showPins,big){
-  const W=cv.width, H=cv.height, img=ctx.createImageData(W,H), d=new Uint32Array(img.data.buffer), UN=0xff2a2e33;
-  for(let py=0;py<H;py++){ const wz=Math.floor(cz+(py-H/2)*bpp); const cz16=wz>>4;
-    for(let px=0;px<W;px++){ const wx=Math.floor(cx+(px-W/2)*bpp); const e=GMAP.cache.get((wx>>4)+','+cz16);
-      if(!e){ d[py*W+px]=((px>>3)+(py>>3))&1?UN:0xff31363b; continue; }
-      const i=(wz&15)*16+(wx&15); let c=e.c[i];
-      const hw=(wx&15)>0?e.h[i-1]:e.h[i], dh=e.h[i]-hw; const sh=dh>0?1.12:dh<0?0.86:1;
-      const r=Math.min(255,(c&255)*sh), g=Math.min(255,((c>>8)&255)*sh), b=Math.min(255,((c>>16)&255)*sh);
-      d[py*W+px]=0xff000000|(b<<16)|(g<<8)|r; } }
-  ctx.putImageData(img,0,0);
+  const W=cv.width, H=cv.height; GMAP.missing=false; GMAP.budget=big?3:6;
+  ctx.fillStyle='#2a2e33'; ctx.fillRect(0,0,W,H); ctx.imageSmoothingEnabled=true;
+  const cs=bpp*4, ts=64*cs, tpx=64*4, wx0=cx-W/2*bpp, wz0=cz-H/2*bpp;
+  for(let tz=Math.floor(wz0/ts);tz<=Math.floor((cz+H/2*bpp)/ts);tz++) for(let tx=Math.floor(wx0/ts);tx<=Math.floor((cx+W/2*bpp)/ts);tx++){
+    const t=gmTile(bpp,tx,tz); if(!t) continue; ctx.drawImage(t,(tx*ts-cx)/bpp+W/2,(tz*ts-cz)/bpp+H/2,tpx+.6,tpx+.6); }
+  if(bpp<=8){ ctx.imageSmoothingEnabled=false; const sz=16/bpp+.5; for(const [k,e] of GMAP.cache){ const q=k.split(','), px=(q[0]*16-cx)/bpp+W/2, py=(q[1]*16-cz)/bpp+H/2; if(px>-sz&&py>-sz&&px<W&&py<H) ctx.drawImage(e.cv,px,py,sz,sz); } ctx.imageSmoothingEnabled=true; }
+  if(GMAP.missing&&big){ clearTimeout(GMAP.rt); GMAP.rt=setTimeout(()=>{ if(GMAP.open) gmRender(); },30); }
   if(!showPins) return;
   const sx=wx=>(wx-cx)/bpp+W/2, sz=wz=>(wz-cz)/bpp+H/2, sc=big?1:.62;
   const pin=(x,y,col,label)=>{ ctx.save(); ctx.translate(x,y); ctx.scale(sc,sc); ctx.fillStyle=col; ctx.strokeStyle='#fff'; ctx.lineWidth=2.5;
@@ -3860,11 +3874,12 @@ function gmBuild(){
   $('gmz1').onclick=()=>gmZoom(1); $('gmz0').onclick=()=>gmZoom(-1); $('gmme').onclick=()=>{ const m=driving||player.pos; GMAP.cx=m.x; GMAP.cz=m.z; gmRender(); };
   $('gmx').onclick=closeMap;
 }
-function gmBpp(){ return [.5,1,2,4,8][GMAP.zoom]; }
-function gmZoom(d){ GMAP.zoom=clamp(GMAP.zoom-d,0,4); gmRender(); }
+function gmBpp(){ return [.5,1,2,4,8,16,32][GMAP.zoom]; }
+function gmZoom(d){ GMAP.zoom=clamp(GMAP.zoom-d,0,6); gmRender(); }
 function gmRender(){
   const cv=GMAP.cv, r=cv.getBoundingClientRect(); const W=Math.max(200,Math.round(r.width)), H=Math.max(200,Math.round(r.height)); if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
   const bpp=gmBpp(); gmDraw(cv,GMAP.ctx,GMAP.cx,GMAP.cz,bpp,true,true);
+  { const c=GMAP.ctx, m=[10,25,50,100,250,500,1000,2500,5000,10000].find(v=>v/bpp>=70)||10000, L=m/bpp; c.fillStyle='rgba(255,255,255,.85)'; c.fillRect(10,H-30,L+16,22); c.fillStyle='#222'; c.fillRect(18,H-14,L,3); c.font='11px sans-serif'; c.fillText((m>=1000?(m/1000)+' km':m+' m'),18,H-18); }
   // callout
   const co=GMAP.callout, sel=GMAP.sel;
   if(sel){ const k=r.width/cv.width, x=((sel.x-GMAP.cx)/bpp+W/2)*k, y=((sel.z-GMAP.cz)/bpp+H/2)*k; co.style.display='block'; co.style.left=Math.max(80,Math.min(r.width-80,x))+'px'; co.style.top=Math.max(90,y-42)+'px';
@@ -3878,14 +3893,14 @@ function gmRender(){
   } else co.style.display='none';
   // footer
   const ft=$('gmft'); let h='<b>Stops</b> ('+GPS.stops.length+'/12) &nbsp;'+(GPS.home?'&#127968; Home set':'no home yet')+'<br>';
-  h+='<button id="gmtrip" class="'+(GPS.route.length?'o':'')+'">'+(GPS.route.length?'Cancel trip':'Start trip')+'</button><button id="gmhome" '+(GPS.home?'':'style="opacity:.4"')+'>Go home</button><button class="x" id="gmclr">Clear stops</button> <span style="opacity:.6">Tap the map to drop a pin &middot; drag to move &middot; M to close</span>';
+  h+='<button id="gmtrip" class="'+(GPS.route.length?'o':'')+'">'+(GPS.route.length?'Cancel trip':'Start trip')+'</button><button id="gmhome" '+(GPS.home?'':'style="opacity:.4"')+'>Go home</button><button class="x" id="gmclr">Clear stops</button> <span style="opacity:.6">Tap anywhere on the map, then press Go here &middot; drag to move &middot; M to close</span>';
   ft.innerHTML=h;
   $('gmtrip').onclick=()=>{ if(GPS.route.length){ GPS.route=[]; } else { GPS.route=[...GPS.stops]; if(GPS.home) GPS.route.push(GPS.home); if(!GPS.route.length) ui.toast('Add stops or a home first'); } gpsBeacons(); gmRender(); };
   $('gmhome').onclick=()=>{ if(GPS.home){ GPS.route=[GPS.home]; gpsBeacons(); gmRender(); } };
   $('gmclr').onclick=()=>{ GPS.stops=[]; GPS.route=GPS.route.filter(p=>p===GPS.home); GPS.seq=0; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
 }
 function openMap(){
-  if(state!=='playing') return; gmBuild(); gmScan(60); const m=driving||player.pos;
+  if(state!=='playing') return; gmBuild(); gmScan(60); const m=driving||player.pos; GMAP.zoom=4;
   state='map'; input.reset(); GMAP.cx=m.x; GMAP.cz=m.z; GMAP.sel=null; GMAP.open=true; GMAP.el.style.display='flex'; hideGpsMini(true);
   if(document.pointerLockElement) document.exitPointerLock(); setTimeout(gmRender,30);
 }
