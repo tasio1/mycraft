@@ -725,9 +725,37 @@ HM.ftv={}; HM.ftvT={}; HM.ftvs=[];
 });
 function ftvInteract(x,y,z,id){
   const t=HM.ftvT[id];
-  if(HM.ftv[id]===1){ world.setBlock(x,y,z,t); ui.feed('TV on - channel '+(tvChannel+1)); }
-  else { tvChannel++; if(tvChannel>=3){ tvChannel=0; world.setBlock(x,y,z,t); ui.feed('TV off'); } else ui.feed('TV channel '+(tvChannel+1)); }
+  if(HM.ftv[id]===1){ world.setBlock(x,y,z,t); ui.feed('TV on - '+tvLabel()); }
+  else { tvChannel++; if(tvChannel>=TVCH.length){ tvChannel=0; world.setBlock(x,y,z,t); ui.feed('TV off'); } else ui.feed(tvLabel()); }
+  animT=1;
   markProgress();
+}
+
+// ---- sofas (right-click to sit) and beds (right-click to sleep / set spawn)
+if(_pid<1142) _pid=1142;
+HM.sofas=[]; HM.beds=[]; HM.fcost=[]; const SIT={}, BEDS={}; let bedSpawn=null;
+const SIT_F=[[0,1],[-1,0],[0,-1],[1,0]];
+SIT[B.SOFA]={h:1}; if(B.CHAIR) SIT[B.CHAIR]={h:1}; BEDS[B.BED]=1;
+[['Red Sofa',[190,50,50],[[B.WOOL_RED,3],[B.PLANKS,2]]],['Blue Sofa',[56,98,190],[[B.WOOL_BLUE,3],[B.PLANKS,2]]],['Green Sofa',[56,140,76],[[B.WOOL_GREEN,3],[B.PLANKS,2]]],
+ ['Grey Sofa',[128,132,140],[[B.WOOL_WHITE,2],[B.WOOL_BLACK,1],[B.PLANKS,2]]],['Brown Leather Sofa',[118,74,44],[[B.WOOL_YELLOW,1],[B.WOOL_BLACK,1],[B.PLANKS,3]]],['Pink Sofa',[226,140,170],[[B.WOOL_WHITE,2],[B.WOOL_RED,1],[B.PLANKS,2]]]].forEach(([n,c,cost])=>{
+  const F=pkTile('wool',c), D=pkTile('wool',c.map(v=>v*.72)), W=pkTile('planks',[96,66,38]);
+  let boxes=[[[0,0,1,2,2,3],W],[[14,0,1,16,2,3],W],[[0,0,13,2,2,15],W],[[14,0,13,16,2,15],W],[[0,2,0,16,6,16],D],[[3,6,4,13,8,16],F],[[0,6,0,16,15,4],D],[[3,8,4,13,13,6],F],[[0,6,4,3,11,16],D],[[13,6,4,16,11,16],D]], ids=[];
+  for(let q=0;q<4;q++){ const id=hmBlock(q===0?n:n+' ('+q+')',boxes,F,{hard:.5,hidden:q>0,desc:'right-click to sit down (move or press Space to get up)'}); ids.push(id); SIT[id]={h:.5,f:SIT_F[q]}; if(q>0) HM.base[id]=ids[0]; boxes=hmRot(boxes); }
+  HM.place[ids[0]]=ids; HM.sofas.push(ids[0]); HM.fcost.push([ids[0],cost]);
+});
+[['Red Bed',[200,60,60],B.WOOL_RED],['Blue Bed',[60,100,200],B.WOOL_BLUE],['Green Bed',[60,150,80],B.WOOL_GREEN],['Yellow Bed',[230,190,60],B.WOOL_YELLOW],['White Bed',[232,232,238],B.WOOL_WHITE],['Black Bed',[52,52,60],B.WOOL_BLACK]].forEach(([n,c,wool])=>{
+  const F=pkTile('wool',c), P=pkTile('wool',[240,240,246]), W=pkTile('planks',[96,66,38]);
+  let boxes=[[[0,0,0,2,3,2],W],[[14,0,0,16,3,2],W],[[0,0,14,2,3,16],W],[[14,0,14,16,3,16],W],[[0,3,0,16,8,16],F],[[3,8,2,13,10,7],P],[[0,3,0,16,13,2],W],[[0,3,14,16,6,16],W]], ids=[];
+  for(let q=0;q<4;q++){ const id=hmBlock(q===0?n:n+' ('+q+')',boxes,F,{hard:.5,hidden:q>0,desc:'right-click at night to sleep until morning and set your spawn point'}); ids.push(id); BEDS[id]=1; if(q>0) HM.base[id]=ids[0]; boxes=hmRot(boxes); }
+  HM.place[ids[0]]=ids; HM.beds.push(ids[0]); HM.fcost.push([ids[0],[[wool,3],[B.PLANKS,3]]]);
+});
+function sitOn(x,y,z,id){ const s=SIT[id]; if(!s||state!=='playing'||driving) return; player.sitting={x,y,z}; player.pos.set(x+.5,y+s.h,z+.5); player.vel.set(0,0,0); player.flying=false; if(s.f) player.yaw=Math.atan2(-s.f[0],-s.f[1]); player.pitch=0; ui.toast('You sit down - move or press Space to get up'); }
+function useBed(x,y,z){
+  bedSpawn={x:x+.5,y:y+1.05,z:z+.5};
+  if(!isNight()){ ui.toast('Spawn point set to this bed. You can only sleep at night'); return; }
+  let ov=document.getElementById('sleepov'); if(!ov){ ov=document.createElement('div'); ov.id='sleepov'; ov.style.cssText='position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity 1.1s;z-index:60'; document.body.appendChild(ov); }
+  ov.style.opacity=1; ui.toast('Sleeping...');
+  setTimeout(()=>{ timeOfDay=0.04; for(const m of mobs.slice()) if(m.type==='zombie') removeMob(m); if(!creative){ hp=MAXHP; updateHearts(); } ui.toast('Good morning! Spawn point set to this bed'); ov.style.opacity=0; },1500);
 }
 
 const OPAQUE = new Uint8Array(2048); BLOCKS.forEach((b,i)=>{ if(b&&b.opaque) OPAQUE[i]=1; });
@@ -917,6 +945,7 @@ const BOATS=[
 BOATS.forEach((s,k)=>{ s.id=1120+k; ITEMS[s.id]={name:s.n,e:s.e,vehicle:'boat',variant:k,desc:(s.fast?'speed boat - top speed ~'+Math.round(s.max*3.6)+' km/h. ':'boat - ~'+Math.round(s.max*3.6)+' km/h. ')+'aim at water + right-click to launch, F to drive: W/S, A/D, Shift boost'}; RECIPES.push({out:s.id,n:1,in:s.cost}); });
 LOOT.uncommon.push([BOATS[0].id,1],[BOATS[3].id,1]); LOOT.rare.push([BOATS[5].id,1],[BOATS[10].id,1]); LOOT.legendary.push([BOATS[11].id,1],[BOATS[14].id,1]);
 
+HM.fcost.forEach(([id,cost])=>RECIPES.push({out:id,n:1,in:cost}));
 HM.lcost.forEach(([id,cost,n])=>RECIPES.push({out:id,n:n,in:typeof cost==='function'?cost():cost}));
 LOOT.common.push([HM.ladders[0],4]); LOOT.uncommon.push([HM.ladders[2],4]);
 HM.ftvs.forEach((id,i)=>RECIPES.push({out:id,n:1,in:i===2?[[I.IRON,3],[B.GLASS,3],[I.GOLD,1],[I.COAL,1]]:[[I.IRON,2],[B.GLASS,3],[I.COAL,1]]}));
@@ -985,6 +1014,74 @@ SLIGHTS.forEach((s,i)=>{ s.id=225+i; ITEMS[s.id]={name:s.n,e:s.e,street:i,desc:'
     return {n:2,in:[[I.IRON,1]]}; };
   for(const cat in PCAT) if(cat!=='tnt') for(const id of PCAT[cat]){ const r=recipeFor(id,cat); RECIPES.push({out:id,n:r.n,in:r.in}); } }
 
+
+// ---- TV channels + movies (one scene function per channel; works at 16px and on big screens)
+const BTV_REG=[], tvCur={ch:0,f:0};
+const TVCH=(()=>{
+  const L=[], mix=(a,b,k)=>{ k=k<0?0:k>1?1:k; return [a[0]+(b[0]-a[0])*k,a[1]+(b[1]-a[1])*k,a[2]+(b[2]-a[2])*k]; };
+  const E=(x,y,cx,cy,rx,ry)=>((x-cx)/rx)*((x-cx)/rx)+((y-cy)/ry)*((y-cy)/ry)<1;
+  const R=(x,y,x0,y0,x1,y1)=>x>=x0&&x<=x1&&y>=y0&&y<=y1;
+  const SEG=(x,y,x0,y0,x1,y1,w)=>{ const dx=x1-x0,dy=y1-y0,l=dx*dx+dy*dy||1, t=Math.max(0,Math.min(1,((x-x0)*dx+(y-y0)*dy)/l)); return Math.hypot(x-(x0+dx*t),y-(y0+dy*t))<w; };
+  const H=(a,b)=>{ const s=Math.sin(a*12.9898+b*78.233)*43758.5453; return s-Math.floor(s); };
+  const BARS=[[235,235,235],[235,235,40],[40,235,235],[40,235,40],[235,40,235],[235,40,40],[40,40,235]];
+  const tv=(n,fn)=>L.push({n,fn,movie:false}), mv=(n,fn)=>L.push({n,movie:true,fn:(x,y,t,A)=>(y<.1||y>.9)?[0,0,0]:fn(x,(y-.1)/.8,t,A)});
+  tv('Test Card',(x,y,t,A)=>{ const u=(x/A+t*.12)%1; if(y<.7) return BARS[(u*7)|0]; if(y<.82) return ((u*14)|0)%2?[20,20,20]:[235,235,235]; const g=40+((u*8)|0)*25; return [g,40,g]; });
+  tv('Static',()=>{ const n=90+Math.random()*140; return [n,n,n]; });
+  tv('Sunset',(x,y,t,A)=>{ const sx=((t*.05)%1.2)-.1; if(Math.hypot(x-sx*A,y-.55)<.17) return [255,240,120]; if(y>.72) return mix([40,30,90],[20,14,50],(y-.72)*3.5); return [255-y*60,130+y*50,170+y*60]; });
+  tv('News',(x,y,t,A)=>{ const cx=A*.42; if(y>.88) return ((x*12+t*5)%1)<.6?[245,245,245]:[190,30,40]; if(y>.78) return [190,30,40];
+    if(E(x,y,cx,.36,.085,.11)) return [236,192,150]; if(R(x,y,cx-.04,.46,cx+.04,.52)) return [236,192,150]; if(R(x,y,cx-.04,.52,cx+.04,.76)) return [240,240,244]; if(E(x,y,cx,.64,.2,.16)&&y>.5) return [26,32,64];
+    if(R(x,y,A*.7,.12,A*.95,.45)) return mix([60,90,140],[255,255,255],(Math.sin(t*3+(x-A*.7)*20)+1)*.2); return mix([20,60,140],[10,34,92],y); });
+  tv('Weather',(x,y,t,A)=>{ const sx=A*.25, d=Math.hypot(x-sx,y-.3); if(d<.13) return [255,222,60]; if(d<.2&&((Math.atan2(y-.3,x-sx)*4+t*2)%2+2)%2<.7) return [255,190,40];
+    const cu=((x/A+t*.05)%1.3)-.15, cx=cu*A; if(E(x,y,cx,.5,.2,.075)||E(x,y,cx+.1,.44,.11,.08)||E(x,y,cx-.09,.46,.09,.06)) return [248,248,252]; if(y>.8) return [60,150,70]; return mix([90,160,235],[170,210,250],y); });
+  tv('Cartoon',(x,y,t,A)=>{ const bx=A*(.5+Math.sin(t*.9)*.25), by=.62-Math.abs(Math.sin(t*2.2))*.36, d=Math.hypot(x-bx,y-by);
+    if(d<.14){ if(Math.hypot(x-bx-.045,y-by+.03)<.03||Math.hypot(x-bx+.045,y-by+.03)<.03) return [255,255,255]; if(y>by+.05&&y<by+.08&&Math.abs(x-bx)<.05) return [70,20,20]; return [230,50,50]; }
+    if(y>.8) return Math.abs(x-bx)<.12&&y<.84?[60,130,50]:[90,190,80]; return [255,224,110]; });
+  tv('Sports',(x,y,t,A)=>{ const p1=A*(.3+Math.sin(t*1.1)*.15), p2=A*(.7+Math.cos(t*.9)*.15), bx=A*(.5+Math.sin(t*1.7)*.3);
+    if(Math.hypot(x-p1,y-.6+Math.sin(t*2)*.05)<.07) return [230,40,40]; if(Math.hypot(x-p2,y-.5)<.07) return [40,90,230]; if(Math.hypot(x-bx,y-.78+Math.abs(Math.sin(t*3))*.1)<.04) return [255,255,255];
+    if(Math.abs(x-A*.5)<.012||Math.abs(y-.15)<.012||y>.95) return [240,240,240]; return (Math.floor(x/A*6)%2)?[44,150,52]:[52,166,60]; });
+  tv('Music',(x,y,t,A)=>{ const i=Math.floor(x/A*8), h=.2+.6*Math.abs(Math.sin(t*2+i*1.3)); const C=[[255,60,90],[255,150,40],[255,230,60],[90,230,90],[60,220,230],[70,120,255],[170,80,255],[255,80,200]];
+    if(y>1-h&&((x/A*8)%1)<.8) return C[i]; return mix([40,10,70],[10,5,30],y); });
+  tv('Nature',(x,y,t,A)=>{ const w=.62+Math.sin(x*9+t*2)*.03; if(y>w) return mix([30,120,190],[10,60,130],(y-w)*3); const bx=(((t*.08)%1.3)-.15)*A; if(Math.abs(x-bx)<.1&&Math.abs(y-.25-Math.abs(x-bx)*.5)<.03) return [250,250,250]; return mix([130,200,250],[210,235,250],y/.6); });
+  mv('Space Adventure',(x,y,t,A)=>{ const u=x/A, sx=(((t*.1)%1.5)-.25)*A, sy=.6+Math.sin(t*1.4)*.04;
+    if(E(x,y,sx,sy,.17,.05)) return [190,196,210]; if(E(x,y,sx+.04,sy-.045,.06,.04)) return [90,220,250]; if(E(x,y,sx-.19,sy,.09,.025)) return [255,150+Math.random()*80,40];
+    const pd=Math.hypot(x-.78*A,y-.32); if(pd<.24){ const l=(x-.7*A)*-.5+(y-.25)*-.5; const b=mix([50,20,90],[210,120,200],l+.5); return Math.abs(y-.32-Math.sin(u*6)*.02)<.03?mix(b,[255,230,250],.5):b; }
+    const h=H(Math.floor(x*16-t*2),Math.floor(y*14)); if(h>.94) return [255,255,255]; if(h>.9) return [140,150,200]; return mix([4,4,20],[20,8,44],y); });
+  mv('Pirate Seas',(x,y,t,A)=>{ const u=x/A, yy=y-Math.sin(t*1.3)*.025, dx=u-.45;
+    if(Math.hypot(x-.82*A,y-.2)<.07) return [250,244,210];
+    if(y>.76+Math.sin(x*9+t*2.2)*.025) return mix([20,60,120],[8,24,70],(y-.76)*3);
+    if(yy>.55&&yy<.66&&Math.abs(dx)<.2-(yy-.55)*1.4) return [96,58,30]; if(Math.abs(dx)<.012&&yy>.2&&yy<.56) return [60,40,20];
+    if(yy>.24&&yy<.52&&dx>.012&&dx<.02+(yy-.24)*.5) return [245,240,225]; if(yy>.28&&yy<.5&&dx<-.012&&dx>-.02-(yy-.28)*.35) return [235,230,215]; if(R(dx,yy,.012,.17,.07,.2)) return [20,20,20];
+    return mix([250,150,90],[70,40,110],y/.76); });
+  mv('Dino Park',(x,y,t,A)=>{ const b=Math.sin(t*3)*.012, sw=Math.sin(t*4)*.02, vv=Math.abs(x/A-.18)*1.1+.38;
+    if(E(x,y,.6*A,.62+b,.17,.1)||SEG(x,y,.7*A,.56+b,.78*A,.3+b,.045)||E(x,y,.8*A,.27+b,.07,.045)||SEG(x,y,.46*A,.62+b,.3*A,.7,.035)||R(x,y,.55*A-.02+sw,.68,.55*A+.03+sw,.82)||R(x,y,.65*A-.02-sw,.68,.65*A+.03-sw,.82)) return (y>.66&&y<.7)?[130,200,100]:[70,160,60];
+    if(R(x,y,.9*A-.01,.5,.9*A+.01,.8)) return [100,66,34]; if(E(x,y,.9*A,.48,.09,.04)) return [40,130,50];
+    if(x/A<.4&&y>vv&&y<.8){ if(y<vv+.05) return mix([255,120,30],[255,220,60],(Math.sin(t*5+x*20)+1)/2); return [70,50,50]; }
+    if(y>.8) return [40,110,40]; return mix([250,200,110],[255,235,160],y); });
+  mv('Robot Wars',(x,y,t,A)=>{ const a=A*(.28+Math.sin(t*.8)*.03), b=A*(.72-Math.sin(t*.8)*.03);
+    const rob=(cx,col)=>{ const X=x-cx; if(R(X,y,-.07,.28,.07,.4)) return (Math.abs(X)<.04&&y>.32&&y<.35)?[255,60,60]:col; if(R(X,y,-.1,.4,.1,.68)) return mix(col,[0,0,0],.3); if(R(X,y,-.09,.68,-.02,.85)||R(X,y,.02,.68,.09,.85)) return col; return null; };
+    const r1=rob(a,[80,140,230]); if(r1) return r1; const r2=rob(b,[230,90,70]); if(r2) return r2;
+    if(Math.sin(t*5)>.2&&Math.abs(y-.5)<.014&&x>a+.1&&x<b-.1) return [255,240,80]; if(y>.85) return [50,50,56];
+    const bh=.35+H(Math.floor(x*7),1)*.3; if(y>.85-bh) return ((Math.floor(x*14)+Math.floor(y*14))%3===0)?[200,190,90]:[36,40,60]; return mix([30,36,70],[90,70,110],y); });
+  mv('Haunted House',(x,y,t,A)=>{ const gx=A*(.5+Math.sin(t*.7)*.3), gy=.35+Math.sin(t*1.8)*.04, hx=x/A-.5;
+    if(E(x,y,gx,gy,.07,.09)||R(x,y,gx-.07,gy,gx+.07,gy+.1+Math.sin(t*6+x*40)*.02)){ if(E(x,y,gx-.025,gy-.02,.012,.02)||E(x,y,gx+.025,gy-.02,.012,.02)) return [10,10,20]; return [240,245,255]; }
+    if(Math.hypot(x-.12*A,y-.2)<.07) return [250,246,210];
+    if(R(hx,y,-.2,.5,.2,.85)){ if((R(hx,y,-.12,.58,-.05,.67)||R(hx,y,.05,.58,.12,.67))&&Math.sin(t*7+hx*40)>-.5) return [255,210,80]; return [24,18,30]; }
+    if(y>.32&&y<.5&&Math.abs(hx)<(y-.32)*1.2) return [18,12,24]; if(y>.85) return [14,22,14]; return mix([10,10,40],[40,20,70],y); });
+  mv('Deep Ocean',(x,y,t,A)=>{ const shx=(((t*.07)%1.5)-.25)*A; if(E(x,y,shx,.72,.16,.045)||SEG(x,y,shx-.15,.72,shx-.22,.66,.015)||R(x,y,shx-.02,.64,shx+.03,.69)) return [90,100,115];
+    for(let i=0;i<4;i++){ const fx=(((t*(.08+i*.02)+i*.31)%1.3)-.15)*A, fy=.2+i*.13+Math.sin(t*2+i)*.02; if(E(x,y,fx,fy,.05,.03)||SEG(x,y,fx-.05,fy,fx-.09,fy-.02,.012)) return i%2?[255,170,40]:[255,90,70]; }
+    for(let k=0;k<3;k++){ const by=1-(((t*.2+k*.37)%1)); if(Math.hypot(x-(.2+k*.3)*A,y-by)<.018) return [190,230,255]; }
+    if(y>.92) return [70,60,40]; return mix([40,150,210],[5,30,90],y); });
+  mv('Wild West',(x,y,t,A)=>{ const cx=.2*A, tx=(((t*.12)%1.3)-.15)*A;
+    if(y>.72) return [(190+H(Math.floor(x*20),Math.floor(y*9))*30)|0,130,70];
+    if(R(x,y,cx-.02,.45,cx+.02,.72)||R(x,y,cx-.07,.55,cx-.02,.58)||R(x,y,cx-.07,.5,cx-.05,.58)||R(x,y,cx+.02,.52,cx+.07,.55)||R(x,y,cx+.05,.47,cx+.07,.55)) return [40,120,50];
+    if(Math.hypot(x-tx,y-.66+Math.abs(Math.sin(t*5))*.04)<.04) return (Math.sin(t*8+x*30)>0)?[150,110,60]:[110,80,40];
+    if(Math.abs(x/A-.78)<.15-(y-.42)*.2&&y>.42) return [150,70,40]; if(Math.hypot(x-.45*A,y-.5)<.1) return [255,240,150]; return mix([255,130,50],[255,200,100],y/.72); });
+  mv('Super Hero',(x,y,t,A)=>{ const hx=(((t*.14)%1.4)-.2)*A, hy=.35+Math.sin(t*2)*.04, dx=x-hx;
+    if(E(dx,y,0,hy,.03,.035)) return [235,190,150]; if(R(dx,y,-.035,hy+.03,.035,hy+.1)) return [40,80,220]; if(dx<-.03&&dx>-.17&&y>hy+.02&&y<hy+.09+(-dx)*.2) return [220,40,50]; if(SEG(x,y,hx+.03,hy+.09,hx+.1,hy+.1,.015)) return [235,190,150];
+    const bh=.25+H(Math.floor(x*8),3)*.35; if(y>.9-bh) return ((Math.floor(x*16)+Math.floor(y*16))%3===0&&Math.sin(t+x*9)>-.7)?[255,220,100]:[20,24,48]; return mix([8,10,40],[60,30,90],y); });
+  return L;
+})();
+const tvColor=(ch,u,v,f,A)=>{ A=A||1; const c=TVCH[((ch%TVCH.length)+TVCH.length)%TVCH.length]; const r=c.fn(u*A,v,f*.16,A); return r; };
 
 const Textures = (() => {
   const TS = 16, AT = 32, SIZE = TS*AT;
@@ -1109,9 +1206,7 @@ const Textures = (() => {
     for(let y=0;y<TS;y++)for(let x=0;x<TS;x++){
       let c;
       if(x<1||y<1||x>14||y>14) c=[24,24,28];
-      else if(ch===0) c=y>11?[40+((x+f)%4)*20,40,40+((x+f)%4)*20]:bars[Math.floor(((x+f)%16)/16*7)];
-      else if(ch===1){ const n=100+Math.random()*130; c=[n,n,n]; }
-      else { const sky=[255-y*8,130+y*3-Math.abs(f%24-12),170+y*5]; const sx=(f*0.7)%22-3, d=Math.hypot(x-sx,y-9); c=d<3?[255,240,120]:(y>11?[30,20,50]:sky); }
+      else c=tvColor(ch,(x-.5)/14,(y-.5)/14,f,1);
       put(x,y,c[0],c[1],c[2]);
     }
   }
@@ -1147,9 +1242,7 @@ const Textures = (() => {
       if(c&&c.length===4){ c=[24,24,28]; }
       if(!c){
         if(!on) c=(x+y===9||x+y===10)?[48,52,64]:[18+(x+y)%3,20,26];
-        else if(ch===0) c=y>11?[40+((x+f)%4)*20,40,40+((x+f)%4)*20]:bars[Math.floor(((x+f)%16)/16*7)];
-        else if(ch===1){ const n=100+Math.random()*130; c=[n,n,n]; }
-        else { const sky=[255-y*8,130+y*3-Math.abs(f%24-12),170+y*5]; const sx=(f*0.7)%22-3, d=Math.hypot(x-sx,y-9); c=d<3?[255,240,120]:(y>11?[30,20,50]:sky); }
+        else c=tvColor(ch,(x-.5)/14,(y-.5)/14,f,1);
       }
       put(x,y,c[0],c[1],c[2]);
     }
@@ -1350,13 +1443,14 @@ const Textures = (() => {
           if(v<.68){ const bars=[[235,235,235],[235,235,20],[20,235,235],[20,235,20],[235,20,235],[235,20,20],[20,20,235]]; return bars[Math.min(6,(u*7)|0)]; }
           if(v<.78){ const a=((u*14)|0)%2?[20,20,20]:[235,235,235]; const bl=[[20,20,235],[20,20,20],[235,20,235],[20,20,20],[20,235,235],[20,20,20],[235,235,235]]; return ((u*7)|0)%2?bl[Math.min(6,(u*7)|0)]:a; }
           const g=u*255; return [g,g,g]; }];
-      each(t,(x,y)=>{ const gx=o.i*16+x, gy=o.j*16+y, d=Math.min(gx,gy,GW-1-gx,GH-1-gy), bz=o.bez;
+      const cell=(x,y,put)=>{ const gx=o.i*16+x, gy=o.j*16+y, d=Math.min(gx,gy,GW-1-gx,GH-1-gy), bz=o.bez;
         if(o.k===2){ // wooden cabinet + rounded CRT
           const cr=Math.min(Math.hypot(Math.max(0,bz+3-gx,gx-(GW-1-bz-3)),Math.max(0,bz+3-gy,gy-(GH-1-bz-3))),99); 
-          if(d<bz||(d<bz+3&&cr>3.2)){ const g=gx%4===3?.7:1; px(t,x,y,150*g+((gy*7+gx)%5),98*g,52*g); return; }
-          const u=(gx-bz)/(GW-2*bz), v=(gy-bz)/(GH-2*bz), col=scene[2](u,v), vg=1-.55*Math.pow(Math.hypot(u-.5,v-.5)*1.6,2.4), sl=(gy%2)?.84:1; px(t,x,y,col[0]*vg*sl,col[1]*vg*sl,col[2]*vg*sl); return; }
-        if(d<bz){ if(d===0) px(t,x,y,150,155,165); else px(t,x,y,18,18,22); return; }
-        const u=(gx-bz)/(GW-2*bz), v=(gy-bz)/(GH-2*bz), col=scene[o.k](u,v), sl=(gy%2)?.94:1; px(t,x,y,col[0]*sl,col[1]*sl,col[2]*sl); });
+          if(d<bz||(d<bz+3&&cr>3.2)){ const g=gx%4===3?.7:1; put(x,y,150*g+((gy*7+gx)%5),98*g,52*g); return; }
+          const u=(gx-bz)/(GW-2*bz), v=(gy-bz)/(GH-2*bz), col=bcol(u,v), vg=1-.55*Math.pow(Math.hypot(u-.5,v-.5)*1.6,2.4), sl=(gy%2)?.84:1; put(x,y,col[0]*vg*sl,col[1]*vg*sl,col[2]*vg*sl); return; }
+        if(d<bz){ if(d===0) put(x,y,150,155,165); else put(x,y,18,18,22); return; }
+        const u=(gx-bz)/(GW-2*bz), v=(gy-bz)/(GH-2*bz), col=bcol(u,v), sl=(gy%2)?.94:1; put(x,y,col[0]*sl,col[1]*sl,col[2]*sl); };
+      const bcol=(u,v)=>tvColor(tvCur.ch,u,v,tvCur.f,GW/GH), draw=put=>{ for(let y=0;y<16;y++)for(let x=0;x<16;x++) cell(x,y,put); }; BTV_REG.push({t,draw}); draw((x,y,r,g,b)=>px(t,x,y,r,g,b));
     },
     signal:(t)=>each(t,(x,y)=>{ const cs=[[3,[255,60,50]],[8,[255,200,40]],[13,[60,230,90]]]; let hit=null; for(const [cy,col] of cs) if(Math.hypot(x-7.5,y-cy)<2.3) hit=col; if(hit) px(t,x,y,hit[0],hit[1],hit[2]); else if(x<2||x>13) px(t,x,y,15,15,18); else px(t,x,y,30,30,34); }),
   };
@@ -1397,7 +1491,7 @@ const Textures = (() => {
   }
   function paintTile(t,fn){ const x0=(t%AT)*TS, y0=((t/AT)|0)*TS, d=ctx.getImageData(x0,y0,TS,TS);
     fn((x,y,r,g,b)=>{ const i=(y*TS+x)*4; d.data[i]=r; d.data[i+1]=g; d.data[i+2]=b; d.data[i+3]=255; }); ctx.putImageData(d,x0,y0); texture.needsUpdate=true; }
-  const tvPaint=(ch,f)=>{ for(const m of TVM) paintTile(m.ton,put=>tvPix(m,true,ch,f,put)); }, compPaint=f=>{ for(const m of CPM) paintTile(m.tscr,put=>compPix(m,f,put)); };
+  const tvPaint=(ch,f)=>{ tvCur.ch=ch; tvCur.f=f; for(const m of TVM) paintTile(m.ton,put=>tvPix(m,true,ch,f,put)); for(const r of BTV_REG) paintTile(r.t,put=>r.draw(put)); }, compPaint=f=>{ for(const m of CPM) paintTile(m.tscr,put=>compPix(m,f,put)); };
   return {texture,avg,icon,cracks,AT,tvPaint,compPaint};
 })();
 const BLOCK_COLOR = BLOCKS.map(b=>b?Textures.avg(b.tiles[2]):null);
@@ -2003,6 +2097,8 @@ class Player {
   }
   update(dt,input){
     const w=this.world; if(!w.isLoaded(this.pos.x,this.pos.z)) return;   // wait for terrain under us
+    if(this.sitting){ const sg=this.sitting, kk=n=>input.key(n);
+      if(!SIT[w.getBlock(sg.x,sg.y,sg.z)]||kk('KeyW')||kk('KeyA')||kk('KeyS')||kk('KeyD')||kk('Space')||kk('KeyC')||kk('KeyZ')||kk('ShiftLeft')) this.standUp(); else { this.vel.set(0,0,0); return; } }
     const fx=Math.floor(this.pos.x), fz=Math.floor(this.pos.z);
     this.inWater=w.getBlock(fx,Math.floor(this.pos.y+0.5),fz)===B.WATER;
     const onL=!this.flying&&!!(LADDER[w.getBlock(fx,Math.floor(this.pos.y),fz)]||LADDER[w.getBlock(fx,Math.floor(this.pos.y+1),fz)]);
@@ -2036,7 +2132,10 @@ class Player {
     if(this.flying&&this.onGround&&this.vel.y<=0&&!space&&(input.key('KeyC')||input.key('KeyZ'))&&!creative) this.flying=false;   // land -> stop flying
     if(this.pos.y<-20){ this.pos.y=CH+5; this.vel.y=0; }
   }
-  eye(){ return new THREE.Vector3(this.pos.x,this.pos.y+EYE_H,this.pos.z); }
+  standUp(){ const sg=this.sitting; this.sitting=null; if(!sg) return; const f=(SIT[this.world.getBlock(sg.x,sg.y,sg.z)]||{}).f, L=(f?[f]:[]).concat([[0,1],[0,-1],[1,0],[-1,0]]);
+    for(const [dx,dz] of L) for(const dy of [0,1]){ const x=sg.x+.5+dx, z=sg.z+.5+dz; if(!this.collides(x,sg.y+dy,z)){ this.pos.set(x,sg.y+dy+.01,z); this.vel.set(0,0,0); return; } }
+    this.pos.set(sg.x+.5,sg.y+1.1,sg.z+.5); this.vel.set(0,0,0); }
+  eye(){ return new THREE.Vector3(this.pos.x,this.pos.y+EYE_H-(this.sitting?.55:0),this.pos.z); }
   dir(){ const cp=Math.cos(this.pitch); return new THREE.Vector3(-Math.sin(this.yaw)*cp,Math.sin(this.pitch),-Math.cos(this.yaw)*cp); }
 }
 
@@ -2380,7 +2479,7 @@ function saveFlash(){ const e=$('savei'); if(!e) return; e.style.opacity=1; clea
 function doSave(silent){
   if(!world) return;
   if(world.mp){ try{ localStorage.setItem(mpInvKey(),JSON.stringify({inv,hot:hotbar,found,fx})); }catch(e){} if(!silent) ui.toast('Your items are saved (the shared world belongs to the host)'); lastSave=performance.now(); return; }
-  const ok=world.save({p:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch,fly:player.flying},t:timeOfDay,ts:Date.now(),slot:ui.sel,gm:gunMag,inv,hot:hotbar,found,fx,pets:petSave(),riv:rivalSave(),veh:vehicles.map(v=>({t:v.t,x:v.x,y:v.y,z:v.z,yaw:v.yaw,c:v.c}))});
+  const ok=world.save({p:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch,fly:player.flying},t:timeOfDay,ts:Date.now(),slot:ui.sel,gm:gunMag,inv,hot:hotbar,found,fx,pets:petSave(),riv:rivalSave(),veh:vehicles.map(v=>({t:v.t,x:v.x,y:v.y,z:v.z,yaw:v.yaw,c:v.c})),bed:bedSpawn});
   if(!silent) ui.toast(ok?'World saved':'Save failed (storage full?)');
   lastSave=performance.now();
   if(ok&&ACCT&&CLOUD.ready) cloudPush(world.seedStr,!silent);
@@ -2414,6 +2513,7 @@ function startGame(seedStr,mp){
   const mi=mineInfo(); $('mineinfo').textContent=mi; ui.feed(mi); ui.feed('Presents are hidden all over the world: dig, build, explore! Houses full of TVs, computers and furniture are scattered around. Press E for inventory.');
   for(const v of vehicles) scene.remove(v.m.g); vehicles=[]; driving=null; pendingStarters=null;
   clearMobs(); hp=MAXHP; mobInit={pets:saved&&saved.pets||null,riv:saved&&saved.riv||null}; updateHearts();
+  bedSpawn=(saved&&saved.bed)||null; if(player) player.sitting=null;
   if(saved&&saved.veh&&!mp){ for(const v of saved.veh) if(VDEF[v.t]) addVehicle(v.t,v.x,v.y+0.3,v.z,v.yaw,v.c); }
   else pendingStarters={x:player.pos.x,y:player.pos.y,z:player.pos.z};
   state='loading'; ui.screen('loading'); lockPointer();
@@ -2513,6 +2613,9 @@ function rightClick(first){
     if(isDoor(tid)){ toggleDoor(target.x,target.y,target.z); return; }
     if(isTV(tid)){ tvInteract(target.x,target.y,target.z,tid); return; }
     if(HM.ftv[tid]){ ftvInteract(target.x,target.y,target.z,tid); return; }
+    if(BLOCKS[tid]&&/\(screen part\)$/.test(BLOCKS[tid].name)){ tvChannel=(tvChannel+1)%TVCH.length; ui.feed('Big screen - '+tvLabel()); animT=1; return; }
+    if(SIT[tid]){ sitOn(target.x,target.y,target.z,tid); return; }
+    if(BEDS[tid]){ useBed(target.x,target.y,target.z); return; }
     if(isComp(tid)){ openComputer(); return; }
     if(HM.toggle[tid]){ world.setBlock(target.x,target.y,target.z,HM.toggle[tid]); sfx('click'); markProgress(); return; }
   }
@@ -2583,9 +2686,11 @@ document.addEventListener('keydown',e=>{
 });
 // ---------- TV + computer (right-click them in the world)
 let tvChannel=0, animT=0, animFrame=0;
+const tvLabel=()=>{ const c=TVCH[tvChannel%TVCH.length]; return c.movie?'Movie: '+c.n:'Channel '+(tvChannel+1)+': '+c.n; };
 function tvInteract(x,y,z,id){
-  if(TV_OFF_TO_ON[id]){ world.setBlock(x,y,z,TV_OFF_TO_ON[id]); markProgress(); ui.feed('TV on - channel '+(tvChannel+1)); }
-  else { tvChannel++; if(tvChannel>=3){ tvChannel=0; world.setBlock(x,y,z,TV_ON_TO_OFF[id]); ui.feed('TV off'); } else ui.feed('TV channel '+(tvChannel+1)); markProgress(); }
+  if(TV_OFF_TO_ON[id]){ world.setBlock(x,y,z,TV_OFF_TO_ON[id]); markProgress(); ui.feed('TV on - '+tvLabel()); }
+  else { tvChannel++; if(tvChannel>=TVCH.length){ tvChannel=0; world.setBlock(x,y,z,TV_ON_TO_OFF[id]); ui.feed('TV off'); } else ui.feed(tvLabel()); markProgress(); }
+  animT=1;
 }
 function tickAnim(dt){
   animT+=dt; if(animT<0.16) return; animT=0; animFrame++;
@@ -2689,7 +2794,7 @@ const INV_TABS=[
   {id:'houses',title:'Houses (30)',icon:HOUSES[0].id,ids:HOUSES.map(h=>h.id)},
   {id:'doors',title:'Doors',icon:DOORS[0].id,ids:DOORS.map(d=>d.id)},
   {id:'tech',title:'TVs, computers & laptops',icon:B.COMPUTER,ids:[...TVM.map(m=>m.off),...CPM.map(m=>m.id),...LPM.map(m=>m.id),...HM.ftvs]},
-  {id:'furniture',title:'Furniture',icon:B.SOFA,ids:[B.SOFA,B.BED,B.TABLE,B.DESK,B.CHAIR,B.CABINET,B.FRIDGE,B.STOVE,B.CARPET,B.PLANT,B.PIANO,B.BOOKSHELF,B.LAMP,B.TV_OFF,B.TV_ON,B.COMPUTER]},
+  {id:'furniture',title:'Furniture',icon:B.SOFA,ids:[B.SOFA,B.BED,B.TABLE,B.DESK,B.CHAIR,B.CABINET,B.FRIDGE,B.STOVE,B.CARPET,B.PLANT,B.PIANO,B.BOOKSHELF,B.LAMP,B.TV_OFF,B.TV_ON,B.COMPUTER,...HM.sofas,...HM.beds]},
   {id:'home2',title:'Lamps, elevators & laptops',icon:HM.lamps[0],ids:[...HM.lamps,HM.elev,...HM.laps]},
   {id:'ladders',title:'Ladders',icon:HM.ladders[0],ids:HM.ladders},
   {id:'bucket',title:'Buckets',icon:1141,ids:[1140,1141]},
@@ -3716,7 +3821,7 @@ function hurtPlayer(n,fx,fz){ if(creative||state!=='playing'||hp<=0) return; hp=
   const dx=player.pos.x-fx, dz=player.pos.z-fz, d=Math.hypot(dx,dz)||1; player.vel.x+=dx/d*6; player.vel.z+=dz/d*6; if(player.onGround) player.vel.y=5;
   if(hp<=0) playerDied(); }
 function playerDied(){ ui.toast('You were defeated - respawning at the start'); for(const m of mobs.slice()) if(m.type==='zombie') removeMob(m);
-  const s=world.findSpawn(); player.pos.set(s.x,s.y,s.z); player.vel.set(0,0,0); hp=MAXHP; updateHearts(); for(const m of mobs) if(m.tamed){ m.x=s.x+1.5; m.z=s.z+1.5; m.y=s.y; } }
+  const s=(bedSpawn&&BEDS[world.getBlock(Math.floor(bedSpawn.x),Math.floor(bedSpawn.y-1.05),Math.floor(bedSpawn.z))])?bedSpawn:world.findSpawn(); player.sitting=null; player.pos.set(s.x,s.y,s.z); player.vel.set(0,0,0); hp=MAXHP; updateHearts(); for(const m of mobs) if(m.tamed){ m.x=s.x+1.5; m.z=s.z+1.5; m.y=s.y; } }
 function damageMob(m,n,fx,fz,kb){ kb=kb===undefined?1:kb; m.hp-=n; const dx=m.x-fx, dz=m.z-fz, d=Math.hypot(dx,dz)||1; m.vx+=dx/d*7*kb; m.vz+=dz/d*7*kb; if(m.onGround) m.vy=5*Math.min(1,kb); particles.burst(Math.floor(m.x),Math.floor(m.y+m.h/2),Math.floor(m.z),B.WOOL_RED);
   if(m.type==='rival'){ m.prov=9; m.stun=Math.max(m.stun,.4); }
   if(m.hp<=0) mobDied(m); }
