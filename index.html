@@ -1047,6 +1047,19 @@ const LMK=(()=>{
     const jh=room(T-NV-8); tower(17,22,3,NV+1,jh,B.WOOL_BLUE,5);
     for(let h=NV+jh+8;h<=NV+jh+9;h++) for(const [a,b] of [[0,0],[1,0],[-1,0],[0,1],[0,-1]]) g.S(17+a,22+b,h,B.GOLD_BLOCK);
     return Math.min(T,NV+jh+12); };
+  // ---------------- Runway (no planes): 121 x 25, runway strip, centre line, threshold stripes, edge lights, taxiway, apron
+  L.runway=g=>{ const B=g.B, S=g.S, WH=B.WOOL_WHITE, W=121, D=25;
+    for(let i=0;i<W;i++) for(let j=0;j<D;j++) S(i,j,0,B.GRASS);
+    for(let i=0;i<W;i++) for(let j=2;j<=16;j++){ S(i,j,0,B.ASPHALT); }                                   // runway 15 wide
+    for(let i=4;i<W-4;i++) if(i%8<5) S(i,9,0,WH);                                                         // centre dashes
+    for(const i0 of [2,W-5]) for(let j=3;j<=15;j++) if(j!==9&&j%2===1){ for(let k=0;k<3;k++) S(i0+k,j,0,WH); } // piano keys
+    for(const i0 of [10,W-14]) { for(let k=0;k<4;k++){ S(i0+k,5,0,WH); S(i0+k,13,0,WH); } }              // touchdown bars
+    for(let i=0;i<W;i+=4){ S(i,1,0,B.GLOWSTONE); S(i,17,0,B.GLOWSTONE); }                                  // edge lights
+    for(let i=2;i<W-2;i+=8){ S(i,9,0,B.GLOWSTONE); }                                                       // centre lights
+    for(let j=17;j<=22;j++) for(let i=58;i<=63;i++) S(i,j,0,B.ASPHALT);                                    // taxiway
+    for(let i=46;i<=75;i++) for(let j=19;j<=24;j++){ S(i,j,0,B.ASPHALT); if(j===21&&i%6<3) S(i,j,0,B.ROAD_LINE); } // apron
+    for(let i=46;i<=75;i+=6){ S(i,24,0,B.GLOWSTONE); }
+    return 1; };
   // ---------------- Copenhagen Airport (CPH): terminal, gate pier, planes, runway, control tower
   L.cph=g=>{ const T=g.T, B=g.B, S=g.S, rd=Math.round, IR=B.IRON_BLOCK, WH=B.WOOL_WHITE, GL=B.GLASS;
     const box=(i0,j0,h0,i1,j1,h1,id)=>{ for(let h=h0;h<=h1;h++)for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++) S(i,j,h,id); };
@@ -1091,9 +1104,7 @@ const LMK=(()=>{
       for(let k=1;k<=5;k++){ S(ci-sg*(7),cj,hc+1+k,(k>3)?BL:WHI); S(ci-sg*(7-(k>3?1:0)),cj,hc+1+k,WHI); }
       for(const s of [-1,1]) for(let k=1;k<=3;k++) S(ci-sg*7,cj+s*k,hc+1,WHI);
       for(const t of [6,-1]) for(let h=1;h<=hc-2;h++){ S(ci+sg*t,cj,h,B.IRON_BLOCK); if(t===-1){ S(ci+sg*t,cj-3,h,B.IRON_BLOCK); S(ci+sg*t,cj+3,h,B.IRON_BLOCK); } } };
-    plane(13,32,1); plane(47,32,-1);
     box(19,31,2,21,32,3,GL); box(39,31,2,41,32,3,GL); box(19,31,1,21,32,1,IR); box(39,31,1,41,32,1,IR);
-    plane(30,41,1);                                           // a jet on the runway
     // control tower (walk up the spiral to the cab)
     const tc=56, tj=11, n=Math.max(10,((T*.6-2)/8|0)*8+2), c=tc;
     for(let h=0;h<=n+7;h++) for(let a=-3;a<=3;a++) for(let b=-3;b<=3;b++){ const e=Math.abs(a)===3||Math.abs(b)===3; if(h===0){ S(tc+a,tj+b,0,B.STONE_BRICKS); continue; } if(!e) continue; if(h<n) S(tc+a,tj+b,h,(h%6===0)?IR:WH); }
@@ -1116,7 +1127,8 @@ const LANDMARKS=[
   {n:'Pyramids of Giza',e:'🔺',gen:LMK.pyramids,W:61,D:31,H:14,key:'pyramids'},
   {n:'Leaning Tower of Pisa',e:'🗼',gen:LMK.pisa,W:15,D:15,H:34,key:'pisa'},
   {n:'Sagrada Família',e:'⛪',gen:LMK.sagrada,W:35,D:49,H:44,key:'sagrada'},
-  {n:'Copenhagen Airport (CPH)',e:'✈️',gen:LMK.cph,W:61,D:45,H:34,key:'cph'}
+  {n:'Copenhagen Airport (CPH)',e:'✈️',gen:LMK.cph,W:61,D:45,H:34,key:'cph'},
+  {n:'Runway',e:'🛬',gen:LMK.runway,W:121,D:25,H:4,key:'runway'}
 ].map(o=>Object.assign({shape:'lm',w:o.W,d:o.D,F:3,fh:4,big:1,rich:1,lm:1,ex:[],pre:[],roofStyle:'flat',win:B.GLASS},o));
 LANDMARKS.forEach((sp,k)=>{ sp.id=1200+k; HOUSES.push(sp); ITEMS[sp.id]={name:sp.n,e:sp.e,house:HOUSES.length-1,desc:'landmark - right-click the ground to build it ('+sp.W+'x'+sp.D+', up to '+sp.H+' tall). You can walk inside; build on low ground for full height'}; });
 
@@ -3137,7 +3149,7 @@ const INV_TABS=[
   {id:'urban',title:'Roads, tiles & roofs',icon:PCAT.urban[0],ids:PCAT.urban},
   {id:'tech2',title:'Tech, metals & gems',icon:PCAT.tech[0],ids:PCAT.tech},
   {id:'neon',title:'Neon & lights',icon:PCAT.light[1],ids:PCAT.light},
-  {id:'houses',title:'Houses & landmarks (40)',icon:HOUSES[0].id,ids:HOUSES.map(h=>h.id)},
+  {id:'houses',title:'Houses & landmarks (41)',icon:HOUSES[0].id,ids:HOUSES.map(h=>h.id)},
   {id:'doors',title:'Doors',icon:DOORS[0].id,ids:DOORS.map(d=>d.id)},
   {id:'tech',title:'TVs, computers & laptops',icon:B.COMPUTER,ids:[...TVM.map(m=>m.off),...CPM.map(m=>m.id),...LPM.map(m=>m.id),...HM.ftvs]},
   {id:'furniture',title:'Furniture',icon:B.SOFA,ids:[B.SOFA,B.BED,B.TABLE,B.DESK,B.CHAIR,B.CABINET,B.FRIDGE,B.STOVE,B.CARPET,B.PLANT,B.PIANO,B.BOOKSHELF,B.LAMP,B.TV_OFF,B.TV_ON,B.COMPUTER,...HM.sofas,...HM.beds]},
