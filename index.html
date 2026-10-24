@@ -3727,7 +3727,7 @@ function enterVeh(v){
 function exitVeh(){
   const v=driving; if(!v) return;
   if((v.t==='plane'||v.t==='liner'||v.t==='heli')&&v.air){ ui.toast(v.t==='heli'?'Land first! (hold C or Z to descend)':'Land first! (ease off the throttle and glide down)'); return; }
-  driving=null; v.speed=0; v.thr=0;
+  driving=null; AP.on=false; v.speed=0; v.thr=0;
   const s=Math.sin(v.yaw), c=Math.cos(v.yaw), R=v.d.exit||(v.d.rad+0.9);
   const cand=[[c*R,-s*R],[-c*R,s*R],[s*R,c*R],[-s*R*1.5,-c*R*1.5],[0,0]];
   let placed=false;
@@ -3820,6 +3820,7 @@ function gpsKey(code){
   if(code==='KeyY'){ const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(!t.length) ui.toast('GPS: add stops with B (and home with H) first'); else gpsPlan(t,true); return true; }
   if(code==='KeyJ'){ if(!GPS.home){ ui.toast('GPS: no home yet - press H where home is'); return true; } gpsPlan([GPS.home],false); return true; }
   if(code==='KeyK'){ GPS.stops=[]; GPS.route=GPS.route.filter(p=>p===GPS.home||(p.via&&false)); GPS.seq=0; gpsSave(); gpsBeacons(); ui.toast('GPS: stops cleared'); return true; }
+  if(code==='KeyO'){ apToggle(); return true; }
   if(code==='KeyL'){ GPS.on=!GPS.on; ui.toast('GPS '+(GPS.on?'shown':'hidden')); return true; }
   return false;
 }
@@ -3831,7 +3832,7 @@ function gpsUI(v){
   let nx=gpsNext();
   if(nx){ const d=Math.hypot(nx.x-v.x,nx.z-v.z), air=v.t==='plane'||v.t==='liner'||v.t==='heli', rad=air?(v.t==='liner'?40:18):7;
     if(d<(nx.via?(air?30:9):rad)){ if(!nx.via) ui.toast('GPS: arrived at '+nx.n); GPS.route.shift(); if(!nx.via){ gpsBeacons(); } nx=gpsNext(); if(!nx) ui.toast('GPS: trip complete'); } }
-  let h='<b style="color:#6df0a0">GPS</b><div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>Y best route · J home · K clear · L hide · M map</div>';
+  let h='<b style="color:#6df0a0">GPS</b>'+(AP.on?' <b style="color:#ffeb3b">&#9679; AUTOPILOT</b>':'')+'<div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>Y best route · O autopilot · J home<br>K clear · L hide · M map</div>';
   if(nx){ const dx=nx.x-v.x, dz=nx.z-v.z, d=Math.hypot(dx,dz), tb=Math.atan2(-dx,-dz); let rel=tb-v.yaw; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
     const eta=d/Math.max(3,Math.abs(v.speed)), mm=Math.floor(eta/60), ss=Math.floor(eta%60);
     h+='<div style="display:flex;align-items:center;gap:10px;margin:5px 0"><div style="font-size:30px;line-height:30px;transform:rotate('+(-rel)+'rad);color:#ffa726">&#10148;</div><div style="font-size:15px"><b>'+(GPS.route.find(q=>!q.via)||nx).n+'</b><br>'+(()=>{ let t=0,c=[v.x,v.z]; for(const q of GPS.route){ t+=Math.hypot(q.x-c[0],q.z-c[1]); c=[q.x,q.z]; } return t>=1000?(t/1000).toFixed(1)+' km':Math.round(t)+' m'; })()+' &middot; ETA '+mm+':'+String(ss).padStart(2,'0')+'</div></div>'; }
@@ -3971,6 +3972,36 @@ function vehKey(code){
   else if(code==='KeyV'&&driving){ vChase=!vChase; ui.toast(vChase?'Chase camera':'Driver camera'); }
   else if(code==='KeyX'&&!driving){ const v=nearestVeh(); if(v) pickupVeh(v); }
 }
+
+// ---- AUTOPILOT (O): cars, bikes and boats follow the GPS route by themselves; touching W/A/S/D/Space gives control back
+const AP={on:false,stuck:0,rev:0,revDir:1};
+function apKind(v){ return v&&(v.t==='car'||v.t==='auto'||v.t==='bike'||v.t==='boat'); }
+function apToggle(){
+  const v=driving; if(!v) return;
+  if(!apKind(v)){ ui.toast('Autopilot works in cars, bikes and boats'); return; }
+  if(AP.on){ AP.on=false; ui.toast('Autopilot off'); return; }
+  if(!GPS.route.length){ const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(t.length) gpsPlan(t,true); }
+  if(!GPS.route.length){ ui.toast('Autopilot: pick a destination first (M = map, tap a spot, Go here)'); return; }
+  AP.on=true; AP.stuck=0; AP.rev=0; ui.toast('Autopilot ON - W/A/S/D or Space takes over, O turns it off');
+}
+function apCtl(v,dt){
+  const nx=GPS.route[0]; if(!nx){ AP.on=false; ui.toast('Autopilot: arrived'); return {f:0,s:0,brake:true}; }
+  const dx=nx.x-v.x, dz=nx.z-v.z, d=Math.hypot(dx,dz), boat=v.t==='boat', fx=-Math.sin(v.yaw), fz=-Math.cos(v.yaw);
+  let tb=Math.atan2(-dx,-dz);
+  // obstacle look-ahead: if the way ahead is blocked, steer to the free side
+  const LA=3.5+Math.abs(v.speed)*.5, free=a=>{ const yy=v.yaw+a, px=v.x-Math.sin(yy)*LA, pz=v.z-Math.cos(yy)*LA, g=groundAt(px,pz,v.y+1.5);
+    if(boat) return g<=v.y+1.5&&world.getBlock(Math.floor(px),Math.floor(v.y+.2),Math.floor(pz))===B.WATER||world.getBlock(Math.floor(px),Math.floor(v.y-.5),Math.floor(pz))===B.WATER; return g-v.y<=1.15&&world.getBlock(Math.floor(px),Math.floor(g-.3),Math.floor(pz))!==B.WATER; };
+  let rel=Math.atan2(Math.sin(tb-v.yaw),Math.cos(tb-v.yaw));
+  if(!free(clamp(rel,-.5,.5))){ for(const a of [.45,-.45,.9,-.9,1.4,-1.4]){ if(free(a)){ rel=a; break; } } }
+  let s=-clamp(rel*1.8,-1,1);
+  let want=v.d.max*.72*clamp(1.15-Math.abs(rel)/1.1,.22,1); if(!nx.via) want=Math.min(want,3+d*.55); else want=Math.min(want,4+d*.9);
+  if(v.wet&&!boat) want*=.6;
+  let f=0, brake=false; if(v.speed<want-1) f=1; else if(v.speed>want+3) brake=true; else if(v.speed>want+1) f=-0.0;
+  // stuck handling: reverse and turn away for a moment
+  if(AP.rev>0){ AP.rev-=dt; return {f:-1,s:-s||AP.revDir,brake:false}; }
+  if(want>3&&Math.abs(v.speed)<0.8){ AP.stuck+=dt; if(AP.stuck>1.3){ AP.rev=1.2; AP.stuck=0; AP.revDir=Math.random()<.5?1:-1; } } else AP.stuck=Math.max(0,AP.stuck-dt*2);
+  return {f,s,brake};
+}
 function driveFrame(dt){
   const v=driving, k=key=>input.key(key);
   vLookYaw-=input.mdx*MOUSE_SENS; vLookYaw+=((k('ArrowLeft')?1:0)-(k('ArrowRight')?1:0))*dt*2;
@@ -3979,7 +4010,10 @@ function driveFrame(dt){
   else if(vChase){ vCamP=clamp(vCamP+input.mdy*MOUSE_SENS,-0.15,1.2); } else vLookPitch=clamp(vLookPitch-input.mdy*MOUSE_SENS,-1.2,1.2);
   const moved=Math.abs(input.mdx)>0.5||k('ArrowLeft')||k('ArrowRight'); input.mdx=input.mdy=0;
   if(!moved) vLookYaw*=Math.exp(-2.2*dt);
-  vstep(v,dt,{f:(k('KeyW')?1:0)-(k('KeyS')?1:0), s:(k('KeyD')?1:0)-(k('KeyA')?1:0), brake:k('Space'), boost:k('ShiftLeft')||k('ShiftRight'), dp, down:k('KeyC')||k('KeyZ')});
+  const manual=k('KeyW')||k('KeyS')||k('KeyA')||k('KeyD')||k('Space');
+  if(AP.on&&(manual||!apKind(v))){ AP.on=false; ui.toast('Autopilot off - you are driving'); }
+  if(AP.on){ const c=apCtl(v,dt); vstep(v,dt,{f:c.f,s:c.s,brake:c.brake,boost:false,dp:0,down:false}); }
+  else vstep(v,dt,{f:(k('KeyW')?1:0)-(k('KeyS')?1:0), s:(k('KeyD')?1:0)-(k('KeyA')?1:0), brake:k('Space'), boost:k('ShiftLeft')||k('ShiftRight'), dp, down:k('KeyC')||k('KeyZ')});
   player.pos.set(v.x,v.y,v.z); player.vel.set(0,0,0); player.yaw=v.yaw+vLookYaw; player.pitch=0;
 }
 function driveCam(){
