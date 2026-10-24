@@ -749,6 +749,53 @@ SIT[B.SOFA]={h:1}; if(B.CHAIR) SIT[B.CHAIR]={h:1}; BEDS[B.BED]=1;
   for(let q=0;q<4;q++){ const id=hmBlock(q===0?n:n+' ('+q+')',boxes,F,{hard:.5,hidden:q>0,desc:'right-click at night to sleep until morning and set your spawn point'}); ids.push(id); BEDS[id]=1; if(q>0) HM.base[id]=ids[0]; boxes=hmRot(boxes); }
   HM.place[ids[0]]=ids; HM.beds.push(ids[0]); HM.fcost.push([ids[0],[[wool,3],[B.PLANKS,3]]]);
 });
+// ---- 10 ventilators (ids 1300+): box housings; the blades are real spinning meshes (see FANS / animFans)
+const FANBUF=[]; HM.vents=[];
+_pid=1300;
+(()=>{
+  const M=pkTile('metal',[176,180,188]), MD=pkTile('metal',[64,68,76]), WH=pkTile('metal',[236,238,242]), YL=pkTile('metal',[222,184,60]), BR=pkTile('flat',[196,150,64],{amt:4}), WD=pkTile('planks',[150,104,60]),
+        SL=pkTile('slats',[200,204,210],{c2:[40,44,52]}), SLD=pkTile('slats',[96,100,108],{c2:[24,26,30]});
+  const T6=(top,bot,sx,sz,front,back)=>[top,bot,sx,sx,front,back];          // tiles in the order +Y,-Y,+X,-X,+Z,-Z
+  const rotPt=(p,q)=>{ let x=p[0],z=p[2]; for(let i=0;i<q;i++){ const nx=16-z, nz=x; x=nx; z=nz; } return [x,p[1],z]; };
+  // def: [name, boxes, fan spec | null, rotates?, cost thunk, desc]
+  const DEF=[
+    ['Ceiling Fan',[[[6,14,6,10,16,10],MD],[[7.5,9.5,7.5,8.5,14,8.5],M],[[5,7.5,5,11,9.5,11],BR]],{axis:'y',n:4,len:7,wid:2.4,col:0x9a6b3a,speed:6,p:[8,8.5,8]},false,()=>[[I.IRON,1],[B.PLANKS,2]],'a ceiling fan - place it on a ceiling'],
+    ['Ceiling Fan with Light',[[[6,14,6,10,16,10],MD],[[7.5,9.5,7.5,8.5,14,8.5],M],[[5,8,5,11,10,11],BR],[[6,5.5,6,10,8,10],WH,1]],{axis:'y',n:5,len:7.2,wid:2.2,col:0xd8d2c4,speed:5,p:[8,9.4,8]},false,()=>[[I.IRON,1],[B.PLANKS,2],[B.GLOWSTONE,1]],'ceiling fan with a bright lamp that lights the room'],
+    ['Wall Exhaust Fan',[[[0,0,0,16,2,3],M],[[0,14,0,16,16,3],M],[[0,2,0,2,14,3],M],[[14,2,0,16,14,3],M],[[2,2,0,14,14,1],MD],[[7,7,1,9,9,4],MD]],{axis:'z',n:4,len:5.6,wid:3,col:0x54585f,speed:11,p:[8,8,2.6]},true,()=>[[I.IRON,2]],'wall exhaust fan - spins; place on a wall, it faces you'],
+    ['Industrial Ventilator',[[[1,1,0,15,3,8],YL],[[1,13,0,15,15,8],YL],[[1,3,0,3,13,8],YL],[[13,3,0,15,13,8],YL],[[1,7.5,8,15,8.5,9],MD],[[7.5,1,8,8.5,15,9],MD],[[6.5,6.5,2,9.5,9.5,5],MD]],{axis:'z',n:6,len:6.4,wid:2.8,col:0x2a2d33,speed:15,p:[8,8,4]},true,()=>[[I.IRON,4],[I.COAL,1]],'big industrial ventilator fan - spins fast'],
+    ['Standing Fan',[[[4,0,4,12,1.5,12],MD],[[7.5,1.5,7.5,8.5,10,8.5],M],[[5.5,8.5,4,10.5,13.5,10],WH],[[3,6.5,10.5,13,7.5,11.5],M],[[3,14.5,10.5,13,15.5,11.5],M],[[3,7.5,10.5,4,14.5,11.5],M],[[12,7.5,10.5,13,14.5,11.5],M]],{axis:'z',n:3,len:4.4,wid:2.6,col:0x6fb5e6,speed:13,p:[8,11,11]},true,()=>[[I.IRON,1],[B.PLANKS,1]],'floor standing fan, faces you'],
+    ['Roof Turbine Vent',[[[3,0,3,13,2,13],M],[[6,2,6,10,5,10],M],[[4,5,4,12,6,12],M],[[4,13.4,4,12,14.6,12],M]],{axis:'y',kind:'turbine',n:10,len:3.4,wid:.9,hh:7.4,col:0xc9ced6,speed:4,p:[8,9.5,8]},false,()=>[[I.IRON,2]],'spinning roof ventilation turbine'],
+    ['Desk Fan',[[[5,0,5,11,1,11],MD],[[7.5,1,7.5,8.5,4,8.5],M],[[6,4,5,10,8,9],WH],[[4,2.6,9.5,12,3.4,10.5],M],[[4,9.6,9.5,12,10.4,10.5],M],[[4,3.4,9.5,5,9.6,10.5],M],[[11,3.4,9.5,12,9.6,10.5],M]],{axis:'z',n:3,len:3.3,wid:2,col:0xe8c15a,speed:19,p:[8,6.2,10]},true,()=>[[I.IRON,1]],'small desk fan'],
+    ['Air Vent Grille',[[[0,0,0,16,16,2],T6(M,M,M,M,SL,MD)]],null,true,()=>[[I.IRON,1]],'wall air vent grille'],
+    ['Ceiling Vent',[[[1,13,1,15,16,15],T6(WH,SL,WH,WH,WH,WH)]],null,false,()=>[[I.IRON,1]],'ceiling air vent'],
+    ['Window Air Conditioner',[[[1,2,0,15,12,13],T6(WH,WH,WH,WH,SL,WH)],[[2,11,13,14,12.5,15],M],[[1,2,13,15,3,14],M]],null,true,()=>[[I.IRON,3],[B.GLASS,1]],'air conditioner unit, vents face you']
+  ];
+  DEF.forEach(([n,boxes,fan,rot,cost,desc])=>{
+    const nq=rot?4:1, ids=[]; let bx=boxes;
+    for(let q=0;q<nq;q++){ const t0=boxes[0][1], id=hmBlock(q===0?n:n+' ('+q+')',bx,Array.isArray(t0)?t0[4]:t0,{hard:.5,lit:bx.some(b=>b[2]),hidden:q>0,desc});
+      ids.push(id); if(q>0) HM.base[id]=ids[0];
+      if(fan){ const p=rotPt(fan.p,q); BLOCKS[id].fan=Object.assign({},fan,{rotY:-q*Math.PI/2,px:p[0]/16,py:p[1]/16,pz:p[2]/16}); }
+      bx=hmRot(bx); }
+    if(rot) HM.place[ids[0]]=ids; HM.vents.push(ids[0]); HM.lcost.push([ids[0],cost,1]); });
+})();
+// spinning blade meshes, one set per fan block, rebuilt together with the chunk mesh
+const FANMATS=new Map(); const FANGROUPS=new Set();
+function fanMat(col){ let m=FANMATS.get(col); if(!m){ m=new THREE.MeshBasicMaterial({color:col}); m.userData.base=new THREE.Color(col); FANMATS.set(col,m); } return m; }
+function makeFan(spec){
+  const outer=new THREE.Group(), spin=new THREE.Group(), mat=fanMat(spec.col); outer.add(spin); outer.rotation.y=spec.rotY||0;
+  for(let i=0;i<spec.n;i++){ const piv=new THREE.Group(); piv.rotation[spec.axis==='y'?'y':'z']=i*Math.PI*2/spec.n; spin.add(piv);
+    if(spec.kind==='turbine'){ const m=new THREE.Mesh(new THREE.BoxGeometry(spec.wid/16,spec.hh/16,spec.len/16*1.6),mat); m.position.set(0,0,spec.len/16*1.4); m.rotation.y=.5; piv.add(m); }
+    else { const L=spec.len/16, m=new THREE.Mesh(new THREE.BoxGeometry(spec.axis==='y'?L:L,0.025,spec.wid/16),mat); if(spec.axis==='y'){ m.position.set(L*.5+.03,0,0); m.rotation.x=.25; } else { m.geometry=new THREE.BoxGeometry(L,spec.wid/16,0.02); m.position.set(L*.5+.02,0,0); m.rotation.x=.55; } piv.add(m); } }
+  spin.userData.axis=spec.axis==='y'?'y':'z'; spin.userData.speed=spec.speed*(spec.kind==='turbine'?1:1); return {outer,spin}; }
+function buildFans(c,list){
+  if(c.fanG){ scene.remove(c.fanG); FANGROUPS.delete(c.fanG); c.fanG=null; }
+  if(!list.length) return; const g=new THREE.Group(); g.position.set(c.cx*CS,0,c.cz*CS);
+  for(const [x,y,z,id] of list){ const spec=BLOCKS[id].fan; if(!spec) continue; const o=makeFan(spec); o.outer.position.set(x+spec.px,y+spec.py,z+spec.pz); g.add(o.outer); }
+  scene.add(g); c.fanG=g; FANGROUPS.add(g); }
+function animFans(dt){ if(!FANGROUPS.size) return; const tint=lightUniforms.tint.value;
+  for(const m of FANMATS.values()) m.color.copy(m.userData.base).multiply(tint).multiplyScalar(.9);
+  for(const g of FANGROUPS) for(const o of g.children){ const s=o.children[0]; s.rotation[s.userData.axis]+=s.userData.speed*dt; } }
+
 function sitOn(x,y,z,id){ const s=SIT[id]; if(!s||state!=='playing'||driving) return; player.sitting={x,y,z}; player.pos.set(x+.5,y+s.h,z+.5); player.vel.set(0,0,0); player.flying=false; if(s.f) player.yaw=Math.atan2(-s.f[0],-s.f[1]); player.pitch=0; ui.toast('You sit down - move or press Space to get up'); }
 function useBed(x,y,z){
   bedSpawn={x:x+.5,y:y+1.05,z:z+.5};
@@ -962,6 +1009,102 @@ const LMK=(()=>{
     for(let i=-3;i<=3;i++) for(let j=-3;j<=3;j++){ if(i*i+j*j<Ri*Ri) g.S(c+dx(nTop+5)+i,cj+j,nTop+5,B.STONE_BRICKS); }
     for(let k=0;k<2;k++) g.S(xt,cj,nTop+1+k,B.AIR);
     return T; };
+  // ---------------- Sagrada Familia (Barcelona)
+  L.sagrada=g=>{ const T=g.T, B=g.B, S=g.S, rd=Math.round, WHt=Math.max(7,rd(T*.26)), NV=WHt+4, SG=PCAT.glass, ST=B.SANDSTONE, SB=B.STONE_BRICKS, CB=B.COBBLE;
+    const inNave=(i,j)=>i>=12&&i<=22&&j>=2&&j<=39, inTr=(i,j)=>i>=2&&i<=32&&j>=17&&j<=27, inApse=(i,j)=>i>=13&&i<=21&&j>=40&&j<=46&&((i-17)*(i-17)/16+(j-40)*(j-40)/49<=1.05);
+    const inside=(i,j)=>inNave(i,j)||inTr(i,j)||inApse(i,j);
+    const top=(i,j)=>(inNave(i,j)&&i>=14&&i<=20)||(i>=14&&i<=20&&j>=17&&j<=27)?NV:WHt;      // taller central nave & crossing
+    for(let i=0;i<35;i++) for(let j=0;j<49;j++){ if(!inside(i,j)) { if(i>=8&&i<=26&&j<=1) g.S(i,j,0,SB); continue; }
+      g.S(i,j,0,(i+j)%2&&!(i%4===2)?SB:CB);
+      const edge=!inside(i+1,j)||!inside(i-1,j)||!inside(i,j+1)||!inside(i,j-1), H=top(i,j);
+      if(edge){ for(let h=1;h<=H;h++){ const win=(h>=3&&h<=H-2)&&((i+j)%3===1); g.S(i,j,h,win?SG[[1,3,4,6,11,14,13,5][(i*3+j)%8]]:((h%5===0)?SB:ST)); } }
+      g.S(i,j,H+1,ST); if(H===NV&&((i+j)%4===0)) g.S(i,j,H,B.GLOWSTONE); }
+    // clerestory walls where the tall centre meets the low aisles
+    for(let j=2;j<=39;j++) for(const i of [13,21]) for(let h=WHt+1;h<=NV;h++){ const win=(h>=WHt+2&&h<=NV-1&&j%3!==0); g.S(i,j,h,win?SG[(j*5)%16]:ST); }
+    for(let j=17;j<=27;j++) for(const i of [13,21]) for(let h=WHt+1;h<=NV;h++) if(j<=17||j>=27) g.S(i,j,h,ST);
+    // tree-like pillars in the nave and crossing
+    for(const i of [14,20]) for(let j=5;j<=37;j+=4){ if(j>=15&&j<=29&&i===14&&false) continue; for(let h=1;h<=NV;h++) g.S(i,j,h,(h<3)?SB:ST); g.S(i,j,NV-1,ST); for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1]]) g.S(i+a,j+b,NV,ST); g.S(i,j,3,B.GLOWSTONE); }
+    for(const [i,j] of [[17,22]]) for(let h=1;h<=NV;h++) g.S(i,j,h,h%4===0?B.GOLD_BLOCK:ST);
+    // front (Glory) facade: three portals, ornament and gable
+    for(let i=11;i<=23;i++){ for(let h=1;h<=NV+3;h++){ const o=(i-17); const arch=(Math.abs(o)<=1&&h<=4)||((Math.abs(o)===4||Math.abs(o)===5)&&h<=3)||(Math.abs(o)<=1&&h===5&&false); g.S(i,1,h,arch?B.AIR:(((i*3+h)%5===0)?CB:ST)); g.S(i,2,h,arch?B.AIR:g.has(i,2,h)?SB:ST); }
+      const pe=NV+3+Math.max(0,5-Math.abs(i-17)); for(let h=NV+4;h<=pe;h++) g.S(i,1,h,(h%3===0)?SB:ST); }
+    for(let h=1;h<=4;h++) for(const i of [14,15,19,20]) g.S(i,0,h,ST);
+    for(let i=11;i<=23;i+=2) for(let h=NV;h>=NV-1;h--) g.S(i,0,h,SB);
+    // towers: tapered hollow spires with colourful pinnacles
+    const tower=(ci,cj,half,h0,Ht,cap,band)=>{ const topH=h0+Ht;
+      for(let h=h0;h<=topH;h++){ const f=(h-h0)/Ht, hf=Math.max(1,half-Math.floor(f*half*1.15)); const slit=h%4===2;
+        for(let a=-hf;a<=hf;a++) for(let b=-hf;b<=hf;b++){ const e=Math.abs(a)===hf||Math.abs(b)===hf; if(!e) continue; const corner=Math.abs(a)===hf&&Math.abs(b)===hf; g.S(ci+a,cj+b,h,(slit&&!corner&&((a+b+h)%2===0))?B.AIR:((h%band===0)?SB:ST)); } }
+      for(let k=0;k<5;k++){ const hh=topH+1+k, r=Math.max(0,1-(k>>1)); for(let a=-r;a<=r;a++) for(let b=-r;b<=r;b++) g.S(ci+a,cj+b,hh,k<4?cap:B.GLOWSTONE); }
+      g.S(ci,cj,topH+6,B.GLOWSTONE); g.S(ci,cj,topH+7,B.GOLD_BLOCK); };
+    const caps=[B.WOOL_RED,B.WOOL_YELLOW,B.WOOL_GREEN,B.WOOL_BLUE,B.GOLD_BLOCK,B.WOOL_RED];
+    // 8 apostle towers on the two transept facades + 4 on the front, evangelists around the crossing, Mary, Jesus
+    const hT=Math.max(8,rd(T*.62)), room=(h)=>Math.max(6,Math.min(h,T-WHt-8));
+    [[30,18],[30,21],[30,24],[30,27],[4,18],[4,21],[4,24],[4,27]].forEach(([i,j],k)=>tower(i,j,2,WHt+1,room(hT-WHt),caps[k%5],5));
+    [[13,5],[21,5],[13,11],[21,11]].forEach(([i,j],k)=>tower(i,j,2,WHt+1,room(hT-WHt-2),caps[(k+1)%5],5));
+    [[12,16],[22,16],[12,28],[22,28]].forEach(([i,j],k)=>tower(i,j,2,NV+1,room(rd(T*.74)-NV),caps[(k+2)%5],4));
+    tower(17,44,2,WHt+1,room(rd(T*.84)-WHt),B.GOLD_BLOCK,4);
+    [[15,46],[19,46]].forEach(([i,j],k)=>tower(i,j,1,WHt+1,room(rd(T*.4)),caps[k+1],4));
+    const jh=room(T-NV-8); tower(17,22,3,NV+1,jh,B.WOOL_BLUE,5);
+    for(let h=NV+jh+8;h<=NV+jh+9;h++) for(const [a,b] of [[0,0],[1,0],[-1,0],[0,1],[0,-1]]) g.S(17+a,22+b,h,B.GOLD_BLOCK);
+    return Math.min(T,NV+jh+12); };
+  // ---------------- Copenhagen Airport (CPH): terminal, gate pier, planes, runway, control tower
+  L.cph=g=>{ const T=g.T, B=g.B, S=g.S, rd=Math.round, IR=B.IRON_BLOCK, WH=B.WOOL_WHITE, GL=B.GLASS;
+    const box=(i0,j0,h0,i1,j1,h1,id)=>{ for(let h=h0;h<=h1;h++)for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++) S(i,j,h,id); };
+    for(let i=0;i<61;i++) for(let j=0;j<45;j++){ S(i,j,0,B.ASPHALT); }
+    for(let i=0;i<61;i++){ if(i%4<2) S(i,2,0,B.ROAD_LINE); }
+    for(let i=0;i<61;i++) for(let j=0;j<=4;j++) if(j<=1) S(i,j,0,B.STONE_BRICKS);                  // forecourt
+    // runway with markings and edge lights
+    for(let i=0;i<61;i++) for(let j=37;j<=43;j++){ S(i,j,0,B.ASPHALT); if(j===40&&i%6<3) S(i,j,0,WH); }
+    for(let i=0;i<61;i+=4){ S(i,36,0,B.GLOWSTONE); S(i,44,0,B.GLOWSTONE); }
+    for(let j=38;j<=42;j++) for(const i of [2,3,57,58]) S(i,j,0,WH);
+    // terminal: curved roof, glass front, interior
+    const T0=4, T1=50, TH=i=>7+rd(3*Math.sin((i-T0)/(T1-T0)*Math.PI));
+    for(let i=T0;i<=T1;i++) for(let j=5;j<=17;j++){ S(i,j,0,B.STONE_BRICKS); const rh=TH(i);
+      for(let h=1;h<=rh;h++){ const edge=(i===T0||i===T1||j===5||j===17); if(!edge) continue;
+        let id=(j===5)?((h%4===0||i%5===0)?IR:GL):(j===17?WH:(h>=3?GL:WH)); S(i,j,h,id); }
+      S(i,j,rh+1,(j%3===0&&i%4===0)?B.GLOWSTONE:WH); if(j>=6&&j<=16&&i%5===0&&j%4===1) S(i,j,rh,B.LAMP); }
+    for(const c of [15,27,39]) for(let h=1;h<=3;h++) for(let i=c-2;i<=c+2;i++) S(i,5,h,B.AIR);        // three entrances
+    for(let h=1;h<=4;h++) for(let j=-0;j<=0;j++) {}
+    box(4,2,5,50,4,5,IR); for(let i=4;i<=50;i+=7) for(let h=1;h<=4;h++) S(i,3,h,IR);                // front canopy
+    // inside: check-in desks, boards, seating, plants
+    for(let i=8;i<=46;i+=6){ S(i,9,1,B.DESK); S(i+1,9,1,B.DESK); S(i,9,2,B.COMPUTER); S(i+1,9,2,B.COMPUTER); S(i,8,1,B.CHAIR); }
+    for(let i=8;i<=46;i+=6) for(let h=4;h<=5;h++) S(i,16,h,B.TV_ON);                                   // departure boards
+    for(let i=8;i<=46;i+=3){ if(i>=24&&i<=30) continue; S(i,13,1,B.SOFA); } for(let i=7;i<=47;i+=10){ S(i,7,1,B.PLANT); S(i,15,1,B.PLANT); }
+    for(let j=6;j<=16;j++) for(let i=24;i<=30;i++) if(g.has(i,j,0)&&j%3===0) S(i,j,0,B.CARPET);
+    // CPH sign on the roof
+    const font={C:['0110','1001','1000','1001','0110'],P:['1110','1001','1110','1000','1000'],H:['1001','1001','1111','1001','1001']};
+    let ox=19; for(const ch of 'CPH'){ font[ch].forEach((row,r)=>{ for(let k=0;k<4;k++) if(row[k]==='1'){ S(ox+k*2,9,TH(ox)+8-r,B.WOOL_BLUE); S(ox+k*2+1,9,TH(ox)+8-r,B.WOOL_BLUE); } }); ox+=11; }
+    for(let i=19;i<=19+30;i+=10) for(let h=TH(i)+2;h<=TH(i)+3;h++) S(i,9,h,IR);
+    // gate pier with lounge
+    for(let i=27;i<=33;i++) for(let j=18;j<=33;j++){ S(i,j,0,B.STONE_BRICKS); for(let h=1;h<=5;h++){ if(i===27||i===33) S(i,j,h,(h>=2&&j%2)?GL:WH); } S(i,j,6,WH); if(j%4===1) S(i,j,5,B.LAMP); }
+    for(let i=21;i<=39;i++) for(let j=30;j<=35;j++){ S(i,j,0,B.STONE_BRICKS); for(let h=1;h<=5;h++){ if(i===21||i===39||j===35) S(i,j,h,(h>=2)?GL:WH); } S(i,j,6,WH); }
+    for(let h=1;h<=4;h++) for(let i=28;i<=32;i++) S(i,17,h,B.AIR);
+    for(let j=20;j<=32;j+=3){ S(28,j,1,B.SOFA); S(32,j,1,B.SOFA); } for(const [i,j] of [[24,33],[36,33],[30,34]]) { S(i,j,1,B.PLANT); }
+    // jet bridges + planes
+    const plane=(ci,cj,sg)=>{ const WHI=B.WOOL_WHITE, BL=B.WOOL_BLUE, hc=4;
+      for(let t=-8;t<=8;t++){ const r=(Math.abs(t)>=7)?0:1;
+        for(let dj=-1;dj<=1;dj++) for(let dh=-1;dh<=1;dh++){ if(r===0&&(dj!==0||dh!==0)&&!(Math.abs(dj)+Math.abs(dh)===1)) continue; const side=Math.abs(dj)===1&&dh===0;
+          S(ci+sg*t,cj+dj,hc+dh,(dh===-1?BL:(side&&t>-6&&t<6&&t%2===0)?GL:WHI)); } }
+      S(ci+sg*8,cj,hc,GL); S(ci+sg*8,cj,hc+1,GL);
+      for(let k=1;k<=9;k++){ for(const s of [-1,1]) for(let w=0;w<3;w++) S(ci+sg*(2-Math.floor(k*.45)-w),cj+s*(1+k),hc-1,k>7?B.WOOL_GRAY||WHI:WHI); }
+      for(const s of [-1,1]) for(const t of [-1,2]) { for(let dh=-3;dh<=-2;dh++) S(ci+sg*t,cj+s*3,hc+dh,B.IRON_BLOCK); }
+      for(let k=1;k<=5;k++){ S(ci-sg*(7),cj,hc+1+k,(k>3)?BL:WHI); S(ci-sg*(7-(k>3?1:0)),cj,hc+1+k,WHI); }
+      for(const s of [-1,1]) for(let k=1;k<=3;k++) S(ci-sg*7,cj+s*k,hc+1,WHI);
+      for(const t of [6,-1]) for(let h=1;h<=hc-2;h++){ S(ci+sg*t,cj,h,B.IRON_BLOCK); if(t===-1){ S(ci+sg*t,cj-3,h,B.IRON_BLOCK); S(ci+sg*t,cj+3,h,B.IRON_BLOCK); } } };
+    plane(13,32,1); plane(47,32,-1);
+    box(19,31,2,21,32,3,GL); box(39,31,2,41,32,3,GL); box(19,31,1,21,32,1,IR); box(39,31,1,41,32,1,IR);
+    plane(30,41,1);                                           // a jet on the runway
+    // control tower (walk up the spiral to the cab)
+    const tc=56, tj=11, n=Math.max(10,((T*.6-2)/8|0)*8+2), c=tc;
+    for(let h=0;h<=n+7;h++) for(let a=-3;a<=3;a++) for(let b=-3;b<=3;b++){ const e=Math.abs(a)===3||Math.abs(b)===3; if(h===0){ S(tc+a,tj+b,0,B.STONE_BRICKS); continue; } if(!e) continue; if(h<n) S(tc+a,tj+b,h,(h%6===0)?IR:WH); }
+    for(let h=1;h<=3;h++) for(let a=-1;a<=1;a++) S(tc+a,tj-3,h,B.AIR);
+    for(let k=0;k<n;k++){ const r=[[-1,-1],[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0]][k%8]; S(tc+r[0],tj+r[1],k+1,B.PLANKS); }
+    for(let a=-4;a<=4;a++) for(let b=-4;b<=4;b++){ if(Math.abs(a)<=1&&Math.abs(b)<=1) continue; if(Math.abs(a)===4&&Math.abs(b)===4) continue; S(tc+a,tj+b,n,B.IRON_BLOCK); if(Math.max(Math.abs(a),Math.abs(b))===4){ for(let h=n+1;h<=n+3;h++) S(tc+a,tj+b,h,GL); } S(tc+a,tj+b,n+4,IR); }
+    for(let h=n+5;h<=n+8;h++) S(tc,tj,h,h===n+8?B.GLOWSTONE:IR); for(let a=-2;a<=2;a++) S(tc+a,tj,n+7,IR);
+    S(tc,tj,n+1,B.AIR); S(tc,tj,n+2,B.AIR);
+    // Danish flag on a pole by the forecourt
+    for(let h=1;h<=12;h++) S(3,3,h,IR); for(let r=0;r<5;r++) for(let k=0;k<7;k++){ const cross=(r===2||k===2); S(3+k+1,3,12-r,cross?WH:B.WOOL_RED); }
+    return Math.max(n+9,16); };
   return L; })();
 const LANDMARKS=[
   {n:'Burj Khalifa',e:'🏙️',gen:LMK.burj,W:19,D:19,H:44,key:'burj'},
@@ -971,7 +1114,9 @@ const LANDMARKS=[
   {n:'Statue of Liberty',e:'🗽',gen:LMK.liberty,W:15,D:15,H:38,key:'liberty'},
   {n:'Santiago Bernabéu Stadium',e:'🏟️',gen:LMK.bernabeu,W:45,D:35,H:16,key:'bernabeu'},
   {n:'Pyramids of Giza',e:'🔺',gen:LMK.pyramids,W:61,D:31,H:14,key:'pyramids'},
-  {n:'Leaning Tower of Pisa',e:'🗼',gen:LMK.pisa,W:15,D:15,H:34,key:'pisa'}
+  {n:'Leaning Tower of Pisa',e:'🗼',gen:LMK.pisa,W:15,D:15,H:34,key:'pisa'},
+  {n:'Sagrada Família',e:'⛪',gen:LMK.sagrada,W:35,D:49,H:44,key:'sagrada'},
+  {n:'Copenhagen Airport (CPH)',e:'✈️',gen:LMK.cph,W:61,D:45,H:34,key:'cph'}
 ].map(o=>Object.assign({shape:'lm',w:o.W,d:o.D,F:3,fh:4,big:1,rich:1,lm:1,ex:[],pre:[],roofStyle:'flat',win:B.GLASS},o));
 LANDMARKS.forEach((sp,k)=>{ sp.id=1200+k; HOUSES.push(sp); ITEMS[sp.id]={name:sp.n,e:sp.e,house:HOUSES.length-1,desc:'landmark - right-click the ground to build it ('+sp.W+'x'+sp.D+', up to '+sp.H+' tall). You can walk inside; build on low ground for full height'}; });
 
@@ -1503,6 +1648,7 @@ const Textures = (() => {
     checker:(t,c,o)=>{ const d=o.c2||[20,20,20]; each(t,(x,y)=>noisy(t,x,y,(((x>>2)+(y>>2))&1)?d:c,4)); },
     stained:(t,c)=>each(t,(x,y)=>{ const e=x===0||y===0||x===15||y===15; if(e) P(t,x,y,c,.75); else if((x===3&&y===3)||(x===4&&y===4)||(x===11&&y===10)) P(t,x,y,[255,255,255]); else if(((x+y)&1)===0) P(t,x,y,c,(x+y)%8===0?1.12:.95); else px(t,x,y,0,0,0,0); }),
     leaves:(t,c)=>each(t,(x,y)=>{ if(rnd()<.16) px(t,x,y,0,0,0,0); else { noisy(t,x,y,c,18); if(rnd()<.1) P(t,x,y,c,.65); } }),
+    slats:(t,c,o)=>{ const d=o.c2||[20,22,28]; each(t,(x,y)=>{ if(y%4===1||y%4===2) noisy(t,x,y,d,2); else noisy(t,x,y,c,4); }); },
     stripes:(t,c,o)=>{ const d=o.c2||[20,20,20]; each(t,(x,y)=>noisy(t,x,y,((((x+y)>>2)&1)?d:c),3)); },
     ore:(t,c)=>{ each(t,(x,y)=>{ noisy(t,x,y,[126,126,126],14); if(rnd()<.07) P(t,x,y,[92,92,92]); }); for(let i=0;i<7;i++){ const cx=1+((rnd()*13)|0), cy=1+((rnd()*13)|0); P(t,cx,cy,c); P(t,cx+1,cy,c,.85); P(t,cx,cy+1,c,1.1); } },
     glow:(t,c)=>each(t,(x,y)=>{ if(x<2||y<2||x>13||y>13) P(t,x,y,c,.62); else { const k=Math.max(0,1-Math.hypot(x-7.5,y-7.5)/9)*.9; px(t,x,y,c[0]+(255-c[0])*k,c[1]+(255-c[1])*k,c[2]+(255-c[2])*k); } }),
@@ -1692,10 +1838,50 @@ for(const f of FACE_DEFS){
     const oa=sa*AXOFF[ta[0]], ob=sb*AXOFF[ta[1]];
     return [f.off+oa, f.off+ob, f.off+oa+ob];
   });
+  f.lo=f.c.map(c=>{                       // the 4 cells whose light is averaged at this corner: the cell in front of the face + 3 around it
+    const sa=c[ta[0]]*2-1, sb=c[ta[1]]*2-1, vec=(a,b)=>{ const v=[f.dir[0],f.dir[1],f.dir[2]]; v[ta[0]]+=a*sa; v[ta[1]]+=b*sb; return v; };
+    return [vec(0,0),vec(1,0),vec(0,1),vec(1,1)];
+  });
 }
 const UVC=[[0,0],[1,0],[1,1],[0,1]];
 const AO_TABLE=[0.45,0.65,0.83,1.0];
 const UV_EPS=0.0008;
+
+// ---- LIGHTING: sky light + block light that spread like in Minecraft (15 at the source, -1 per block, walls stop it).
+// Computed for a 3x3 chunk area whenever a chunk is meshed, then baked into vertex colours (r=shade*AO, g=sky, b=block).
+const LR=48, LA=LR*LR, LN=LA*CH;
+const LSKY=new Uint8Array(LN), LBLK=new Uint8Array(LN), LOP=new Uint8Array(LN), LQ=[];
+const LCS=new Float32Array(16), LCB=new Float32Array(16);
+for(let l=0;l<16;l++){ const k=Math.pow(0.8,15-l); LCS[l]=0.07+0.93*k; LCB[l]=l===0?0:Math.pow(0.86,15-l); }
+let LEM=null;
+function lightEmit(id){
+  if(!LEM){ LEM=new Uint8Array(2048); for(let i=1;i<2048;i++){ const d=BLOCKS[i]; if(d&&d.lit){ const n=d.name||''; LEM[i]=/magma|lava/i.test(n)?13:/door/i.test(n)?7:/\b(tv|screen|computer|monitor|display|holo|panel|console|laptop|notebook)\b/i.test(n)?9:15; } } }
+  return id<2048?LEM[id]:0; }
+function lightFlood(arr,seeds){
+  LQ.length=0; for(let k=0;k<seeds.length;k++) LQ.push(seeds[k]);
+  for(let h=0;h<LQ.length;h++){ const i=LQ[h], l=arr[i]; if(l<=1) continue; const nl=l-1, col=i%LA, y=(i-col)/LA, x=col%LR, z=(col-x)/LR;
+    let n;
+    if(x>0){ n=i-1; if(!LOP[n]&&arr[n]<nl){ arr[n]=nl; LQ.push(n); } }
+    if(x<LR-1){ n=i+1; if(!LOP[n]&&arr[n]<nl){ arr[n]=nl; LQ.push(n); } }
+    if(z>0){ n=i-LR; if(!LOP[n]&&arr[n]<nl){ arr[n]=nl; LQ.push(n); } }
+    if(z<LR-1){ n=i+LR; if(!LOP[n]&&arr[n]<nl){ arr[n]=nl; LQ.push(n); } }
+    if(y>0){ n=i-LA; if(!LOP[n]&&arr[n]<nl){ arr[n]=nl; LQ.push(n); } }
+    if(y<CH-1){ n=i+LA; if(!LOP[n]&&arr[n]<nl){ arr[n]=nl; LQ.push(n); } } } }
+function computeLight(world,chunk){
+  LSKY.fill(0); LBLK.fill(0); const em=[];
+  for(let rz=0;rz<3;rz++)for(let rx=0;rx<3;rx++){ const c=world.chunks.get((chunk.cx+rx-1)+','+(chunk.cz+rz-1));
+    for(let z=0;z<16;z++)for(let x=0;x<16;x++){ const col=(rz*16+z)*LR+rx*16+x, src=z*16+x;
+      for(let y=0;y<CH;y++){ const i=y*LA+col; if(!c){ LOP[i]=1; continue; } const id=c.data[y*256+src]; LOP[i]=OPAQUE[id];
+        if(id){ const e=lightEmit(id); if(e){ LBLK[i]=e; em.push(i); } } } } }
+  for(let col=0;col<LA;col++){ for(let y=CH-1;y>=0;y--){ const i=y*LA+col; if(LOP[i]) break; LSKY[i]=15; } }
+  const seeds=[]; for(let z=0;z<LR;z++)for(let x=0;x<LR;x++){ const col=z*LR+x;
+    for(let y=CH-1;y>=0;y--){ const i=y*LA+col; if(LSKY[i]!==15) break;
+      if((x>0&&!LOP[i-1]&&LSKY[i-1]<15)||(x<LR-1&&!LOP[i+1]&&LSKY[i+1]<15)||(z>0&&!LOP[i-LR]&&LSKY[i-LR]<15)||(z<LR-1&&!LOP[i+LR]&&LSKY[i+LR]<15)) seeds.push(i); } }
+  lightFlood(LSKY,seeds); lightFlood(LBLK,em);
+}
+const lightUniforms={tint:{value:null}};
+function patchLightMat(m){ m.onBeforeCompile=sh=>{ sh.uniforms.uTint=lightUniforms.tint;
+  sh.fragmentShader=sh.fragmentShader.replace('void main() {','uniform vec3 uTint;\nvoid main() {').replace('#include <color_fragment>','diffuseColor.rgb*=vColor.r*max(vColor.g*uTint,vColor.b*vec3(1.0,0.9,0.72));'); }; }
 
 class MeshData { constructor(){this.pos=[];this.uv=[];this.col=[];this.idx=[];this.n=0;} }
 
@@ -1717,7 +1903,7 @@ class ChunkMesher {
     }
   }
 
-  static addFace(M,x,y,z,f,tile,ao,shade,h){
+  static addFace(M,x,y,z,f,tile,ao,shade,h,lt){
     const base=M.n, A=Textures.AT, q=1/A;
     const u0=(tile%A)*q+UV_EPS, u1=(tile%A)*q+q-UV_EPS;
     const v0=1-((tile/A|0)+1)*q+UV_EPS, v1=1-((tile/A|0))*q-UV_EPS;
@@ -1725,7 +1911,7 @@ class ChunkMesher {
       const c=f.c[k], uc=UVC[k], s=shade*AO_TABLE[ao[k]];
       M.pos.push(x+c[0], y+c[1]*h, z+c[2]);
       M.uv.push(uc[0]?u1:u0, uc[1]?v1:v0);
-      M.col.push(s,s,s);
+      if(lt) M.col.push(s,lt[k*2],lt[k*2+1]); else M.col.push(s,s,s);
     }
     // flip the quad diagonal to avoid AO interpolation artefacts
     if(ao[0]+ao[2]>ao[1]+ao[3]) M.idx.push(base,base+1,base+2, base,base+2,base+3);
@@ -1733,22 +1919,28 @@ class ChunkMesher {
     M.n+=4;
   }
 
-  static addBoxFace(M,x,y,z,f,tile,b,shade){
+  static addBoxFace(M,x,y,z,f,tile,b,shade,l0,l1){
     const base=M.n, A=Textures.AT, q=1/A;
     const u0=(tile%A)*q+UV_EPS, u1=(tile%A)*q+q-UV_EPS, v0=1-((tile/A|0)+1)*q+UV_EPS, v1=1-((tile/A|0))*q-UV_EPS;
     for(let k=0;k<4;k++){ const c=f.c[k], uc=UVC[k];
-      M.pos.push(x+(c[0]?b[3]:b[0])/16, y+(c[1]?b[4]:b[1])/16, z+(c[2]?b[5]:b[2])/16); M.uv.push(uc[0]?u1:u0, uc[1]?v1:v0); M.col.push(shade,shade,shade); }
+      M.pos.push(x+(c[0]?b[3]:b[0])/16, y+(c[1]?b[4]:b[1])/16, z+(c[2]?b[5]:b[2])/16); M.uv.push(uc[0]?u1:u0, uc[1]?v1:v0); if(l0===undefined) M.col.push(shade,shade,shade); else M.col.push(shade,l0,l1); }
     M.idx.push(base+1,base+2,base+3, base+1,base+3,base); M.n+=4;
   }
 
+  static faceLight(x,y,z,f,lt){
+    for(let k=0;k<4;k++){ const lo=f.lo[k]; let s=0,b=0,n=0;
+      for(let q=0;q<4;q++){ const v=lo[q], yy=y+v[1]; if(yy>=CH){ s+=1; n++; continue; } if(yy<0) continue;
+        const i=yy*LA+(z+16+v[2])*LR+(x+16+v[0]); if(LOP[i]) continue; s+=LCS[LSKY[i]]; b+=LCB[LBLK[i]]; n++; }
+      if(n){ lt[k*2]=s/n; lt[k*2+1]=b/n; } else { lt[k*2]=0.07; lt[k*2+1]=0; } } }
+
   static build(world,chunk){
-    this.fillPadded(world,chunk);
-    const O=new MeshData(), W=new MeshData(), L=new MeshData(), P=padded, ao=[3,3,3,3];
+    FANBUF.length=0; this.fillPadded(world,chunk); computeLight(world,chunk);
+    const O=new MeshData(), W=new MeshData(), L=new MeshData(), P=padded, ao=[3,3,3,3], lt=new Float32Array(8);
     for(let y=0;y<CH;y++)for(let z=0;z<CS;z++)for(let x=0;x<CS;x++){
       const id=P[(y+1)*OY+(z+1)*OZ+(x+1)]; if(id===B.AIR) continue;
       const pi=(y+1)*OY+(z+1)*OZ+(x+1), def=BLOCKS[id], isW=id===B.WATER, op=OPAQUE[id]===1;
-      if(def.box){ for(const bx of def.box){ const tl=Array.isArray(bx[1])?bx[1]:[bx[1],bx[1],bx[1]];
-          for(let fi=0;fi<6;fi++){ const f=FACE_DEFS[fi]; this.addBoxFace(bx[2]?L:O,x,y,z,f,(tl.length===6?tl[fi]:tl[f.tile]),bx[0],bx[2]?1:f.shade); } }
+      if(def.box){ if(def.fan) FANBUF.push([x,y,z,id]); for(const bx of def.box){ const tl=Array.isArray(bx[1])?bx[1]:[bx[1],bx[1],bx[1]];
+          for(let fi=0;fi<6;fi++){ const f=FACE_DEFS[fi]; if(bx[2]) this.addBoxFace(L,x,y,z,f,(tl.length===6?tl[fi]:tl[f.tile]),bx[0],1); else { const li=y*LA+(z+16)*LR+(x+16); this.addBoxFace(O,x,y,z,f,(tl.length===6?tl[fi]:tl[f.tile]),bx[0],f.shade,LCS[LSKY[li]],LCB[LBLK[li]]); } } }
         continue; }
       for(let fi=0;fi<6;fi++){
         const f=FACE_DEFS[fi], nid=P[pi+f.off];
@@ -1760,7 +1952,7 @@ class ChunkMesher {
         if(!show) continue;
         if(isW){
           const h = P[pi+OY]===B.WATER?1:0.875;            // water surface sits a bit below the block top
-          this.addFace(W,x,y,z,f,def.tiles[f.tile],[3,3,3,3],f.shade,h);
+          this.faceLight(x,y,z,f,lt); this.addFace(W,x,y,z,f,def.tiles[f.tile],[3,3,3,3],f.shade,h,lt);
         } else {
           // --- baked ambient occlusion per vertex
           for(let k=0;k<4;k++){
@@ -1769,7 +1961,7 @@ class ChunkMesher {
           }
           const tl=def.sides&&fi>=2?def.sides[fi-2]:def.tiles[f.tile];
           if(def.lit) this.addFace(L,x,y,z,f,tl,[3,3,3,3],1,1);
-          else this.addFace(O,x,y,z,f,tl,ao,f.shade,1);
+          else { this.faceLight(x,y,z,f,lt); this.addFace(O,x,y,z,f,tl,ao,f.shade,1,lt); }
         }
       }
     }
@@ -1789,8 +1981,9 @@ class World {
     this.mods=new Map();         // "cx,cz" -> Map(index -> blockId)  (player edits, persisted)
     this.renderDistance=DEFAULT_RENDER_DISTANCE;
     this.mineCache=new Map(); this.plan=[]; this.idle=true; this.pcx=1e9; this.pcz=1e9;
-    this.modsDirty=false;
+    this.modsDirty=false; this.relightQ=new Set();
   }
+  queueRelight(cx,cz){ for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dz) continue; const k=(cx+dx)+','+(cz+dz), n=this.chunks.get(k); if(n&&n.meshed) this.relightQ.add(k); } }
   hash3(x,y,z){ let h=Math.imul(x,374761393)^Math.imul(y,668265263)^Math.imul(z,1274126177)^this.seed;
     h=Math.imul(h^(h>>>13),1597334677); h^=h>>>16; return (h>>>0)/4294967296; }
   /** natural ore distribution inside stone: rarer ores live deeper */
@@ -2037,8 +2230,8 @@ class World {
     if(y<0||y>=CH) return;
     const cx=x>>4, cz=z>>4, c=this.chunks.get(cx+','+cz); if(!c) return;
     const lx=x&15, lz=z&15, idx=y*256+lz*CS+lx;
-    if(c.data[idx]===id) return;
-    c.data[idx]=id;
+    const old=c.data[idx]; if(old===id) return;
+    c.data[idx]=id; if(OPAQUE[old]!==OPAQUE[id]||lightEmit(old)!==lightEmit(id)) this.queueRelight(cx,cz);
     const key=cx+','+cz; let m=this.mods.get(key); if(!m){m=new Map();this.mods.set(key,m);} m.set(idx,id);
     this.modsDirty=true; if(this.onEdit) this.onEdit([[x,y,z,id]]);
     // remesh this chunk, plus neighbours if the edit touches a border (faces/AO depend on it)
@@ -2050,15 +2243,15 @@ class World {
 
   /** apply many edits at once, then re-mesh every touched chunk a single time */
   setBlocks(list){
-    const dirty=new Set(), changed=this.onEdit?[]:null;
+    const dirty=new Set(), changed=this.onEdit?[]:null, lchg=new Set();
     for(const [x,y,z,id] of list){
       if(y<0||y>=CH) continue; const cx=x>>4, cz=z>>4, c=this.chunks.get(cx+','+cz); if(!c) continue;
-      const lx=x&15, lz=z&15, idx=y*256+lz*CS+lx; if(c.data[idx]===id) continue; c.data[idx]=id;
+      const lx=x&15, lz=z&15, idx=y*256+lz*CS+lx, old=c.data[idx]; if(old===id) continue; c.data[idx]=id; if(OPAQUE[old]!==OPAQUE[id]||lightEmit(old)!==lightEmit(id)) lchg.add(c);
       const key=cx+','+cz; let m=this.mods.get(key); if(!m){m=new Map();this.mods.set(key,m);} m.set(idx,id);
       dirty.add(c); if(changed) changed.push([x,y,z,id]);
       if(lx===0||lx===15||lz===0||lz===15) for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){ const n=this.chunks.get((cx+dx)+','+(cz+dz)); if(n&&n.meshed) dirty.add(n); }
     }
-    this.modsDirty=true; for(const c of dirty) this.buildMesh(c); if(changed&&changed.length) this.onEdit(changed);
+    this.modsDirty=true; for(const c of dirty) this.buildMesh(c); for(const c of lchg) this.queueRelight(c.cx,c.cz); for(const c of dirty) this.relightQ.delete(c.cx+','+c.cz); if(changed&&changed.length) this.onEdit(changed);
   }
 
   /* ---- meshing / scene management ---- */
@@ -2068,6 +2261,7 @@ class World {
   }
   disposeMesh(c){
     for(const k of ['meshO','meshW','meshL']) if(c[k]){ this.scene.remove(c[k]); c[k].geometry.dispose(); c[k]=null; }
+    if(c.fanG){ this.scene.remove(c.fanG); FANGROUPS.delete(c.fanG); c.fanG=null; }
   }
   buildMesh(c){
     const {O,W,L}=ChunkMesher.build(this,c);
@@ -2083,7 +2277,7 @@ class World {
       const m=new THREE.Mesh(g,mat); m.position.set(c.cx*CS,0,c.cz*CS); m.renderOrder=order;
       this.scene.add(m); return m;
     };
-    c.meshO=mk(O,this.mats.opaque,0); c.meshL=mk(L,this.mats.lit,0); c.meshW=mk(W,this.mats.water,1);
+    c.meshO=mk(O,this.mats.opaque,0); c.meshL=mk(L,this.mats.lit,0); c.meshW=mk(W,this.mats.water,1); buildFans(c,FANBUF.slice());
     c.meshed=true;
   }
 
@@ -2107,8 +2301,9 @@ class World {
   }
   /** do chunk generation / meshing work for at most `budget` ms (never blocks the frame for long) */
   stream(budget){
-    if(this.idle) return;
     const t0=performance.now();
+    while(this.relightQ.size){ const k=this.relightQ.values().next().value; this.relightQ.delete(k); const n=this.chunks.get(k); if(n&&n.meshed) this.buildMesh(n); if(performance.now()-t0>budget) return; }
+    if(this.idle) return;
     for(;;){
       let did=false;
       for(const e of this.plan){
@@ -2367,6 +2562,7 @@ const materials={
   lit:new THREE.MeshBasicMaterial({map:Textures.texture,vertexColors:true,alphaTest:0.5}),   // glowing blocks: never dimmed by night
   water:new THREE.MeshBasicMaterial({map:Textures.texture,vertexColors:true,transparent:true,opacity:0.7,depthWrite:false,side:THREE.DoubleSide}),
 };
+lightUniforms.tint.value=new THREE.Color(1,1,1); patchLightMat(materials.opaque); patchLightMat(materials.water);
 
 // --- sky dome, sun, moon, stars (all follow the camera)
 const skyUniforms={top:{value:new THREE.Color()},hor:{value:new THREE.Color()}};
@@ -2828,7 +3024,7 @@ function tvInteract(x,y,z,id){
   animT=1;
 }
 function tickAnim(dt){
-  animT+=dt; if(animT<0.16) return; animT=0; animFrame++;
+  animFans(dt); animT+=dt; if(animT<0.16) return; animT=0; animFrame++;
   Textures.tvPaint(tvChannel,animFrame); Textures.compPaint(Math.floor(animFrame/3)%2);
 }
 let compApp='', snakeTimer=null, snake=null;
@@ -2926,12 +3122,13 @@ const INV_TABS=[
   {id:'urban',title:'Roads, tiles & roofs',icon:PCAT.urban[0],ids:PCAT.urban},
   {id:'tech2',title:'Tech, metals & gems',icon:PCAT.tech[0],ids:PCAT.tech},
   {id:'neon',title:'Neon & lights',icon:PCAT.light[1],ids:PCAT.light},
-  {id:'houses',title:'Houses & landmarks (38)',icon:HOUSES[0].id,ids:HOUSES.map(h=>h.id)},
+  {id:'houses',title:'Houses & landmarks (40)',icon:HOUSES[0].id,ids:HOUSES.map(h=>h.id)},
   {id:'doors',title:'Doors',icon:DOORS[0].id,ids:DOORS.map(d=>d.id)},
   {id:'tech',title:'TVs, computers & laptops',icon:B.COMPUTER,ids:[...TVM.map(m=>m.off),...CPM.map(m=>m.id),...LPM.map(m=>m.id),...HM.ftvs]},
   {id:'furniture',title:'Furniture',icon:B.SOFA,ids:[B.SOFA,B.BED,B.TABLE,B.DESK,B.CHAIR,B.CABINET,B.FRIDGE,B.STOVE,B.CARPET,B.PLANT,B.PIANO,B.BOOKSHELF,B.LAMP,B.TV_OFF,B.TV_ON,B.COMPUTER,...HM.sofas,...HM.beds]},
   {id:'home2',title:'Lamps, elevators & laptops',icon:HM.lamps[0],ids:[...HM.lamps,HM.elev,...HM.laps]},
   {id:'ladders',title:'Ladders',icon:HM.ladders[0],ids:HM.ladders},
+  {id:'vents',title:'Ventilators & fans',icon:HM.vents[0],ids:HM.vents},
   {id:'bucket',title:'Buckets',icon:1141,ids:[1140,1141]},
   {id:'weapons',title:'Knives, swords & spears',icon:1105,ids:WEAPON_IDS},
   {id:'boats',title:'Boats & speed boats',icon:BOATS[3].id,ids:BOATS.map(x=>x.id)},
@@ -3023,7 +3220,7 @@ function updateSky(dt,underwater){
   sun.visible=sunY>-0.25; moon.visible=sunY<0.25;
   // block lighting: tint all geometry by time of day
   tmpB.copy(NIGHT_TINT).lerp(WHITE,day);
-  vehLight(day); materials.opaque.color.copy(tmpB); materials.water.color.copy(tmpB); particles.tint(tmpB);
+  vehLight(day); lightUniforms.tint.value.copy(tmpB); particles.tint(tmpB);
   if(underwater){ scene.fog.color.set(0x1a3f80); scene.fog.near=0.5; scene.fog.far=26; tmpA.set(0x1a3f80); }
   else { scene.fog.color.copy(tmpA); applyFog(); }
   renderer.setClearColor(tmpA);
