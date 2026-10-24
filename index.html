@@ -3757,16 +3757,69 @@ function gpsBeacons(){
   for(const m of GPS.meshes){ scene.remove(m); m.geometry.dispose(); m.material.dispose(); } GPS.meshes=[];
   const mk=(p,col,r)=>{ const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,CH+80,10,1,true),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.38,depthWrite:false,side:THREE.DoubleSide})); m.position.set(p.x,(CH+80)/2-10,p.z); scene.add(m); GPS.meshes.push(m); };
   if(GPS.home) mk(GPS.home,0x44e06a,.7);
-  GPS.stops.forEach((p,i)=>mk(p,GPS.route.length&&GPS.route[0]===p?0xffa726:0x4fc3f7,.5));
+  GPS.stops.forEach((p,i)=>mk(p,GPS.route.length&&GPS.route.find(q=>!q.via)===p?0xffa726:0x4fc3f7,.5));
 }
 function gpsNext(){ return GPS.route.length?GPS.route[0]:null; }
+
+// ---- GPS route finding: best stop order (shortest tour, home last) + path around water/cliffs for ground vehicles and boats
+function gpsKind(){ const t=driving&&driving.t; return t==='boat'?'boat':(t==='plane'||t==='liner'||t==='heli')?'air':'ground'; }
+function gpsEdgeOk(kind,x0,z0,x1,z1){
+  const n=Math.max(1,Math.ceil(Math.hypot(x1-x0,z1-z0)/2)); let ph=world.heightAt(Math.floor(x0),Math.floor(z0));
+  for(let i=1;i<=n;i++){ const x=Math.floor(x0+(x1-x0)*i/n), z=Math.floor(z0+(z1-z0)*i/n), h=world.heightAt(x,z);
+    if(kind==='boat'){ if(h>SEA_LEVEL) return false; } else { if(h<=SEA_LEVEL||Math.abs(h-ph)>1) return false; } ph=h; }
+  return true;
+}
+function gpsPath(kind,sx,sz,tx,tz){   // returns [[x,z],...] intermediate points (without start/end), null if no route
+  if(kind==='air'||gpsEdgeOk(kind,sx,sz,tx,tz)) return [];
+  const cs=6, dist=Math.hypot(tx-sx,tz-sz), mg=Math.max(120,dist*.5);
+  const x0=Math.min(sx,tx)-mg, z0=Math.min(sz,tz)-mg, GW=Math.min(300,Math.ceil((Math.abs(tx-sx)+2*mg)/cs)), GH=Math.min(300,Math.ceil((Math.abs(tz-sz)+2*mg)/cs));
+  const cx=i=>x0+(i%GW)*cs+cs/2, cz=i=>z0+Math.floor(i/GW)*cs+cs/2, idx=(x,z)=>{ const i=Math.floor((x-x0)/cs), j=Math.floor((z-z0)/cs); return (i<0||j<0||i>=GW||j>=GH)?-1:j*GW+i; };
+  const ok=(x,z)=>{ const h=world.heightAt(Math.floor(x),Math.floor(z)); return kind==='boat'?h<=SEA_LEVEL:h>SEA_LEVEL; };
+  const si=idx(sx,sz), gi=idx(tx,tz); if(si<0||gi<0) return null;
+  if(!ok(tx,tz)) return null;
+  const g=new Float32Array(GW*GH).fill(1e9), from=new Int32Array(GW*GH).fill(-1), done=new Uint8Array(GW*GH), heap=[];
+  const push=(f,i)=>{ heap.push([f,i]); let k=heap.length-1; while(k>0){ const q=(k-1)>>1; if(heap[q][0]<=heap[k][0]) break; [heap[q],heap[k]]=[heap[k],heap[q]]; k=q; } };
+  const pop=()=>{ const t=heap[0], l=heap.pop(); if(heap.length){ heap[0]=l; let k=0; for(;;){ let a=2*k+1,b=a+1,m=k; if(a<heap.length&&heap[a][0]<heap[m][0]) m=a; if(b<heap.length&&heap[b][0]<heap[m][0]) m=b; if(m===k) break; [heap[m],heap[k]]=[heap[k],heap[m]]; k=m; } } return t; };
+  g[si]=0; push(Math.hypot(tx-sx,tz-sz),si); let n=0, found=false;
+  while(heap.length&&n++<40000){ const [,i]=pop(); if(done[i]) continue; done[i]=1; if(i===gi){ found=true; break; }
+    const ix=i%GW, iz=Math.floor(i/GW);
+    for(let dz=-1;dz<=1;dz++) for(let dx=-1;dx<=1;dx++){ if(!dx&&!dz) continue; const a=ix+dx, b=iz+dz; if(a<0||b<0||a>=GW||b>=GH) continue; const j=b*GW+a; if(done[j]) continue;
+      const px=cx(j), pz=cz(j); if(j!==gi&&!ok(px,pz)) continue; if(!gpsEdgeOk(kind,cx(i),cz(i),px,pz)) continue;
+      const ng=g[i]+cs*(dx&&dz?1.414:1); if(ng<g[j]){ g[j]=ng; from[j]=i; push(ng+Math.hypot(tx-px,tz-pz),j); } } }
+  if(!found) return null;
+  const pts=[]; for(let i=from[gi];i>=0&&i!==si;i=from[i]) pts.push([cx(i),cz(i)]); pts.reverse();
+  const all=[[sx,sz],...pts,[tx,tz]], out=[]; let a=0;
+  while(a<all.length-1){ let b=Math.min(all.length-1,a+40); while(b>a+1&&!gpsEdgeOk(kind,all[a][0],all[a][1],all[b][0],all[b][1])) b--; if(b<all.length-1) out.push(all[b]); a=b; }
+  return out;
+}
+function gpsOrder(start,targets,homeLast){
+  const pts=targets.slice(), home=homeLast?pts.pop():null, d=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
+  const order=[]; let cur=start; const rest=pts.slice();
+  while(rest.length){ let bi=0; for(let i=1;i<rest.length;i++) if(d(cur,rest[i])<d(cur,rest[bi])) bi=i; cur=rest.splice(bi,1)[0]; order.push(cur); }
+  const len=o=>{ let t=0,c=start; for(const q of o){ t+=d(c,q); c=q; } if(home) t+=d(c,home); return t; };
+  let imp=true, guard=0; while(imp&&guard++<50){ imp=false; for(let i=0;i<order.length-1;i++) for(let j=i+1;j<order.length;j++){ const t=order.slice(0,i).concat(order.slice(i,j+1).reverse(),order.slice(j+1)); if(len(t)<len(order)-1e-6){ order.splice(0,order.length,...t); imp=true; } } }
+  if(home) order.push(home); return order;
+}
+function gpsPlan(targets,best){   // builds GPS.route from real targets; best=true also finds the shortest order
+  const v=driving, me={x:v?v.x:player.pos.x,z:v?v.z:player.pos.z}, kind=gpsKind();
+  if(!targets.length){ GPS.route=[]; gpsBeacons(); return; }
+  const list=best&&targets.length>1?gpsOrder(me,targets,GPS.home&&targets[targets.length-1]===GPS.home):targets;
+  const route=[]; let cur=[me.x,me.z], total=0, miss=0;
+  for(const T of list){ const via=gpsPath(kind,cur[0],cur[1],T.x,T.z); if(via===null){ miss++; total+=Math.hypot(T.x-cur[0],T.z-cur[1]); }
+    else { for(const q of via){ route.push({x:q[0],z:q[1],n:'turn',via:true}); total+=0; } let c=cur; for(const q of via){ total+=Math.hypot(q[0]-c[0],q[1]-c[1]); c=q; } total+=Math.hypot(T.x-c[0],T.z-c[1]); }
+    route.push(T); cur=[T.x,T.z]; }
+  GPS.route=route; gpsBeacons();
+  const mx=(driving?driving.d.max:12)*.8, sec=total/Math.max(4,mx);
+  ui.toast('GPS: '+(best?'best route':'route')+' - '+list.filter(q=>!q.via).length+' stop'+(list.length>1?'s':'')+', '+(total>=1000?(total/1000).toFixed(1)+' km':Math.round(total)+' m')+', about '+Math.max(1,Math.round(sec/60))+' min'+(miss?' ('+miss+' with no ground route: going straight)':''));
+}
 function gpsKey(code){
   const v=driving; if(!v) return false;
   if(code==='KeyH'){ GPS.home={x:Math.round(v.x),z:Math.round(v.z),n:'Home'}; gpsSave(); gpsBeacons(); ui.toast('GPS: home set here'); return true; }
   if(code==='KeyB'){ if(GPS.stops.length>=12){ ui.toast('GPS: max 12 stops (K clears them)'); return true; } GPS.stops.push({x:Math.round(v.x),z:Math.round(v.z),n:'Stop '+(++GPS.seq)}); gpsSave(); gpsBeacons(); ui.toast('GPS: '+GPS.stops[GPS.stops.length-1].n+' added ('+GPS.stops.length+' on the route)'); return true; }
-  if(code==='KeyN'){ if(GPS.route.length){ GPS.route=[]; ui.toast('GPS: trip cancelled'); } else { GPS.route=[...GPS.stops]; if(GPS.home) GPS.route.push(GPS.home); if(!GPS.route.length) ui.toast('GPS: add stops with B or set home with H first'); else ui.toast('GPS: trip started - '+GPS.route.length+' leg'+(GPS.route.length>1?'s':'')); } gpsBeacons(); return true; }
-  if(code==='KeyJ'){ if(!GPS.home){ ui.toast('GPS: no home yet - press H where home is'); return true; } GPS.route=[GPS.home]; gpsBeacons(); ui.toast('GPS: heading home'); return true; }
-  if(code==='KeyK'){ GPS.stops=[]; GPS.route=GPS.route.filter(p=>p===GPS.home); GPS.seq=0; gpsSave(); gpsBeacons(); ui.toast('GPS: stops cleared'); return true; }
+  if(code==='KeyN'){ if(GPS.route.length){ GPS.route=[]; ui.toast('GPS: trip cancelled'); } else { const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(!t.length) ui.toast('GPS: add stops with B or set home with H first'); else gpsPlan(t,false); } gpsBeacons(); return true; }
+  if(code==='KeyY'){ const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(!t.length) ui.toast('GPS: add stops with B (and home with H) first'); else gpsPlan(t,true); return true; }
+  if(code==='KeyJ'){ if(!GPS.home){ ui.toast('GPS: no home yet - press H where home is'); return true; } gpsPlan([GPS.home],false); return true; }
+  if(code==='KeyK'){ GPS.stops=[]; GPS.route=GPS.route.filter(p=>p===GPS.home||(p.via&&false)); GPS.seq=0; gpsSave(); gpsBeacons(); ui.toast('GPS: stops cleared'); return true; }
   if(code==='KeyL'){ GPS.on=!GPS.on; ui.toast('GPS '+(GPS.on?'shown':'hidden')); return true; }
   return false;
 }
@@ -3777,11 +3830,11 @@ function gpsUI(v){
   for(const m of GPS.meshes) m.visible=true;
   let nx=gpsNext();
   if(nx){ const d=Math.hypot(nx.x-v.x,nx.z-v.z), air=v.t==='plane'||v.t==='liner'||v.t==='heli', rad=air?(v.t==='liner'?40:18):7;
-    if(d<rad){ ui.toast('GPS: arrived at '+nx.n); GPS.route.shift(); gpsBeacons(); nx=gpsNext(); if(!nx) ui.toast('GPS: trip complete'); } }
-  let h='<b style="color:#6df0a0">GPS</b><div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>J go home · K clear · L hide · M big map</div>';
+    if(d<(nx.via?(air?30:9):rad)){ if(!nx.via) ui.toast('GPS: arrived at '+nx.n); GPS.route.shift(); if(!nx.via){ gpsBeacons(); } nx=gpsNext(); if(!nx) ui.toast('GPS: trip complete'); } }
+  let h='<b style="color:#6df0a0">GPS</b><div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>Y best route · J home · K clear · L hide · M map</div>';
   if(nx){ const dx=nx.x-v.x, dz=nx.z-v.z, d=Math.hypot(dx,dz), tb=Math.atan2(-dx,-dz); let rel=tb-v.yaw; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
     const eta=d/Math.max(3,Math.abs(v.speed)), mm=Math.floor(eta/60), ss=Math.floor(eta%60);
-    h+='<div style="display:flex;align-items:center;gap:10px;margin:5px 0"><div style="font-size:30px;line-height:30px;transform:rotate('+(-rel)+'rad);color:#ffa726">&#10148;</div><div style="font-size:15px"><b>'+nx.n+'</b><br>'+(d>=1000?(d/1000).toFixed(1)+' km':Math.round(d)+' m')+' &middot; ETA '+mm+':'+String(ss).padStart(2,'0')+'</div></div>'; }
+    h+='<div style="display:flex;align-items:center;gap:10px;margin:5px 0"><div style="font-size:30px;line-height:30px;transform:rotate('+(-rel)+'rad);color:#ffa726">&#10148;</div><div style="font-size:15px"><b>'+(GPS.route.find(q=>!q.via)||nx).n+'</b><br>'+(()=>{ let t=0,c=[v.x,v.z]; for(const q of GPS.route){ t+=Math.hypot(q.x-c[0],q.z-c[1]); c=[q.x,q.z]; } return t>=1000?(t/1000).toFixed(1)+' km':Math.round(t)+' m'; })()+' &middot; ETA '+mm+':'+String(ss).padStart(2,'0')+'</div></div>'; }
   else h+='<div style="margin:4px 0;opacity:.8">No trip. Drive somewhere, press B to add a stop, H to set home, N to go.</div>';
   const list=[...GPS.stops.map(p=>p), ...(GPS.home?[GPS.home]:[])];
   if(list.length) h+=list.map(p=>(GPS.route[0]===p?'<span style="color:#ffa726">&#9654; ':'<span>&nbsp;&nbsp;')+p.n+(p===GPS.home?' &#127968;':'')+'</span>').join('<br>');
@@ -3886,18 +3939,19 @@ function gmRender(){
     const me=driving||{x:player.pos.x,z:player.pos.z}, dist=Math.round(Math.hypot(sel.x-me.x,sel.z-me.z));
     const ttl=sel.pin?sel.pin.n:'Dropped pin';
     co.innerHTML='<b style="font-size:13px">'+ttl+'</b><br>x '+sel.x+', z '+sel.z+'<br>'+dist+' m from you<br>'+(sel.pin?'<button class="g" id="gmgo">Go here</button><button class="r" id="gmrm">Remove</button>':'<button class="g" id="gmgo">Go here</button><button id="gmst">Add stop</button><button id="gmhm">Set home</button>');
-    const go=$('gmgo'); if(go) go.onclick=()=>{ GPS.route=[sel.pin||{x:sel.x,z:sel.z,n:'Pinned spot'}]; gpsBeacons(); GMAP.sel=null; ui.toast('GPS: route set'); gmRender(); };
+    const go=$('gmgo'); if(go) go.onclick=()=>{ gpsPlan([sel.pin||{x:sel.x,z:sel.z,n:'Pinned spot'}],false); GMAP.sel=null; gmRender(); };
     const rm=$('gmrm'); if(rm) rm.onclick=()=>{ const q=sel.pin; if(q===GPS.home) GPS.home=null; else GPS.stops=GPS.stops.filter(z=>z!==q); GPS.route=GPS.route.filter(z=>z!==q); gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
     const st=$('gmst'); if(st) st.onclick=()=>{ if(GPS.stops.length>=12){ ui.toast('GPS: max 12 stops'); return; } GPS.stops.push({x:sel.x,z:sel.z,n:'Stop '+(++GPS.seq)}); gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
     const hm=$('gmhm'); if(hm) hm.onclick=()=>{ GPS.home={x:sel.x,z:sel.z,n:'Home'}; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
   } else co.style.display='none';
   // footer
   const ft=$('gmft'); let h='<b>Stops</b> ('+GPS.stops.length+'/12) &nbsp;'+(GPS.home?'&#127968; Home set':'no home yet')+'<br>';
-  h+='<button id="gmtrip" class="'+(GPS.route.length?'o':'')+'">'+(GPS.route.length?'Cancel trip':'Start trip')+'</button><button id="gmhome" '+(GPS.home?'':'style="opacity:.4"')+'>Go home</button><button class="x" id="gmclr">Clear stops</button> <span style="opacity:.6">Tap anywhere on the map, then press Go here &middot; drag to move &middot; M to close</span>';
+  h+='<button class="g" id="gmbest" style="background:#2e9d4f">Find best route</button><button id="gmtrip" class="'+(GPS.route.length?'o':'')+'">'+(GPS.route.length?'Cancel trip':'Start trip')+'</button><button id="gmhome" '+(GPS.home?'':'style="opacity:.4"')+'>Go home</button><button class="x" id="gmclr">Clear stops</button> <span style="opacity:.6">Tap anywhere on the map, then press Go here &middot; drag to move &middot; M to close</span>';
   ft.innerHTML=h;
-  $('gmtrip').onclick=()=>{ if(GPS.route.length){ GPS.route=[]; } else { GPS.route=[...GPS.stops]; if(GPS.home) GPS.route.push(GPS.home); if(!GPS.route.length) ui.toast('Add stops or a home first'); } gpsBeacons(); gmRender(); };
-  $('gmhome').onclick=()=>{ if(GPS.home){ GPS.route=[GPS.home]; gpsBeacons(); gmRender(); } };
-  $('gmclr').onclick=()=>{ GPS.stops=[]; GPS.route=GPS.route.filter(p=>p===GPS.home); GPS.seq=0; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
+  $('gmtrip').onclick=()=>{ if(GPS.route.length){ GPS.route=[]; gpsBeacons(); } else { const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(!t.length) ui.toast('Add stops or a home first'); else gpsPlan(t,false); } gmRender(); };
+  $('gmbest').onclick=()=>{ const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(!t.length) ui.toast('Add stops or a home first'); else gpsPlan(t,true); gmRender(); };
+  $('gmhome').onclick=()=>{ if(GPS.home){ gpsPlan([GPS.home],false); gmRender(); } };
+  $('gmclr').onclick=()=>{ GPS.stops=[]; GPS.route=GPS.route.filter(p=>p===GPS.home||(p.via&&false)); GPS.seq=0; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
 }
 function openMap(){
   if(state!=='playing') return; gmBuild(); gmScan(60); const m=driving||player.pos; GMAP.zoom=4;
