@@ -818,14 +818,14 @@ const HOUSES=(()=>{
   H('Pagoda','⛩️',{shape:'pagoda',w:11,d:11,F:1,wall:b.WOOL_RED,corner:b.DARK_PLANKS,floor:b.DARK_PLANKS,roof:b.TERRACOTTA,door:15,winPat:'strip',ex:['lamps']}),
   H('Treehouse','🌳',{shape:'stilts',lift:6,w:7,d:7,wall:b.LOG,corner:b.LOG,floor:b.PLANKS,roof:b.LEAVES,roofStyle:'hip',door:3,pre:['bedroom'],nofound:1,ex:[]}),
   H('Desert Villa','🏜️',{w:13,d:9,wall:b.SANDSTONE,corner:b.TERRACOTTA,floor:b.TERRACOTTA,roof:b.SANDSTONE,roofStyle:'parapet',door:4,pre:['living'],ex:['pool','lamps']}),
-  H('Snow Igloo','❄️',{shape:'dome',w:13,d:13,wall:b.SNOW,win:b.GLASS,door:12,ex:[]}),
+  H('Snow Igloo','❄️',{shape:'dome',floor:b.BIRCH_PLANKS,w:13,d:13,wall:b.SNOW,win:b.GLASS,door:12,ex:[]}),
   H('A-Frame Cabin','⛺',{shape:'aframe',w:11,d:9,wall:b.DARK_PLANKS,floor:b.PLANKS,door:3,ex:['lamps']}),
   H('Stone Tower','🗼',{shape:'round',w:9,d:9,F:4,wall:b.COBBLE,wall2:b.STONE_BRICKS,floor:b.COBBLE,roof:b.DARK_PLANKS,roofStyle:'cone',door:2,pre:['hall','bedroom','office','bedroom'],ex:[]}),
   H('Farmhouse','🚜',{w:11,d:9,F:2,wall:b.WOOL_WHITE,corner:b.WOOL_RED,floor:b.PLANKS,roof:b.WOOL_RED,door:6,pre:['kitchen','bedroom'],ex:['porch','chimney','fence']}),
-  H('UFO Pod','🛸',{shape:'dome',w:15,d:15,wall:b.WOOL_WHITE,win:b.SEA_LANTERN,door:14,pre:['tech'],ex:[],rich:1}),
+  H('UFO Pod','🛸',{shape:'dome',floor:b.IRON_BLOCK,w:15,d:15,wall:b.WOOL_WHITE,win:b.SEA_LANTERN,door:14,pre:['tech'],ex:[],rich:1}),
   H('Lighthouse','🗼',{shape:'round',w:9,d:9,F:5,wall:b.WOOL_WHITE,wall2:b.WOOL_RED,floor:b.STONE_BRICKS,roof:b.WOOL_RED,roofStyle:'lantern',door:5,pre:['hall','bedroom','office','bedroom','empty'],ex:[],big:1}),
   H('Grand Mansion','🏛️',{w:17,d:11,F:2,wall:b.BIRCH_PLANKS,corner:b.STONE_BRICKS,floor:b.DARK_PLANKS,roof:b.DARK_PLANKS,roofStyle:'hip',winPat:'big',door:1,pre:['hall','bedroom'],ex:['porch','lamps','fence'],big:1}),
-  H('Hobbit Hole','🧙',{shape:'dome',w:13,d:13,wall:b.DIRT,wall2:b.GRASS,win:b.GLASS,door:0,pre:['living'],ex:[]}),
+  H('Hobbit Hole','🧙',{shape:'dome',floor:b.DARK_PLANKS,w:13,d:13,wall:b.DIRT,wall2:b.GRASS,win:b.GLASS,door:0,pre:['living'],ex:[]}),
   H('Japanese House','🏯',{w:11,d:9,wall:b.BIRCH_PLANKS,corner:b.DARK_PLANKS,floor:b.BIRCH_PLANKS,roof:b.TERRACOTTA,winPat:'strip',door:15,ex:['porch','fence','lamps']}),
   H('Gothic Manor','🦇',{w:13,d:11,F:3,wall:b.OBSIDIAN,corner:b.DARK_PLANKS,floor:b.DARK_PLANKS,roof:b.STONE_BRICKS,roofStyle:'hip',door:2,pre:['hall','bedroom','office'],ex:['cornerTowers','lamps'],big:1}),
   H('Dock House','⚓',{shape:'stilts',lift:4,w:9,d:7,wall:b.DARK_PLANKS,corner:b.LOG,floor:b.PLANKS,roof:b.BIRCH_PLANKS,door:3,pre:['kitchen'],nofound:1,ex:['lamps']}),
@@ -3600,7 +3600,7 @@ function buildHouse(sp,face,ax,ay,az){
     for(let h=h0+1;h<top;h++){
       const rel=(h-h0-1)%fh, winRow=(rel===1)||(o.winPat==='big'&&rel===2&&fh>=4);
       for(let j=0;j<d;j++)for(let i=0;i<w;i++){
-        if(!(i===0||i===w-1||j===0||j===d-1)){ S(i0+i,j0+j,h,o.carve?AIR:AIR); continue; }
+        if(!(i===0||i===w-1||j===0||j===d-1)){ const fl=(h-h0)/fh; if(Number.isInteger(fl)&&fl>=1&&fl<Fl&&!stairHole(fl,i,j)) continue; S(i0+i,j0+j,h,AIR); continue; }
         const corner=(i===0||i===w-1)&&(j===0||j===d-1); let id=(corner&&o.corner)?o.corner:o.wall;
         if(!corner&&winRow&&!glassWall&&o.winPat!=='none'){
           const along=(j===0||j===d-1)?i:j, len=(j===0||j===d-1)?w:d; let win=false;
@@ -3694,7 +3694,7 @@ function buildHouse(sp,face,ax,ay,az){
       if(pre!=='empty') furnish(pre,L,c-R+2,c+R-2,c-R+2,c+R-2,ok); lamps(L,c-R+1,c+R-1,c-R+1,c+R-1,(i,j)=>inDisk(i,j,R-2)&&!cells.has(i+','+j+','+(L+1)),fh-1); }
     topAll=top; }
   else if(sp.shape==='dome'){ const R=W>>1, c=R, rr=R+0.5, thick=sp.wall===B.DIRT?2.2:1.2;
-    for(let j=0;j<D;j++)for(let i=0;i<W;i++) if((i-c)**2+(j-c)**2<=rr*rr) S(i,j,0,sp.wall===B.DIRT?B.GRASS:B.STONE_BRICKS);
+    for(let j=0;j<D;j++)for(let i=0;i<W;i++) if((i-c)**2+(j-c)**2<=rr*rr) S(i,j,0,sp.floor||(sp.wall===B.DIRT?B.DARK_PLANKS:sp.wall===B.SNOW?B.BIRCH_PLANKS:B.STONE_BRICKS));
     for(let h=1;h<=R;h++) for(let j=0;j<D;j++)for(let i=0;i<W;i++){ const q=(i-c)**2+(j-c)**2+h*h; if(q<=rr*rr&&q>(R+0.5-thick)*(R+0.5-thick)){
         let id=sp.wall; if(sp.wall===B.DIRT&&h>=R*0.45) id=sp.wall2; if(h>=2&&h<=3&&(i+j)%4===0&&h<R*0.7&&sp.win!=null&&sp.wall!==B.DIRT) id=sp.win; if(sp.wall===B.DIRT&&h>=2&&h<=3&&(i*3+j*5)%11===0) id=sp.win;
         S(i,j,h,id); } else if(q<=(R-0.7)*(R-0.7)) S(i,j,h,AIR); }
