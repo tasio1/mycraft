@@ -840,6 +840,141 @@ const HOUSES=(()=>{
 })();
 HOUSES.forEach((h,i)=>{ h.id=185+i; ITEMS[h.id]={name:h.n,e:h.e,house:i,desc:'right-click the ground to build this house in front of you ('+h.w+'x'+h.d+', '+h.F+' floor'+(h.F>1?'s':'')+')'}; });
 const houseCost=h=>{ const c=[[B.PLANKS,16*h.F+14],[B.COBBLE,14*h.F+10],[B.GLASS,6]]; if(h.rich) c.push([I.GOLD,6],[I.DIAMOND,2]); if(h.big) c[0][1]+=20; return c; };
+// ---- 8 world landmarks (inventory items 1200..1207). Heights shrink proportionally on high ground (world is 64 high).
+const LMK=(()=>{
+  const b=B, P=Math.PI, rd=Math.round;
+  const ring8=[[-1,-1],[0,-1],[1,-1],[1,0],[1,1],[0,1],[-1,1],[-1,0]];
+  const n82=(x)=>{ const m=Math.max(1,rd((x-2)/8)); return m*8+2; };         // step count whose last step sits mid-side of the 3x3 stair ring
+  function spiral(g,ci,cj,n,mat){ for(let k=0;k<n;k++){ const r=ring8[k%8]; g.S(ci+r[0],cj+r[1],k+1,mat); } }
+  function path(g,cells,mat){ let pv=null; cells.forEach((q,k)=>{ const i=q[0],j=q[1],h=q[2]; if(pv&&Math.abs(pv[0]-i)+Math.abs(pv[1]-j)>1){ const A=[pv[0]+Math.sign(i-pv[0]),pv[1]], B2=[pv[0],pv[1]+Math.sign(j-pv[1])]; const free=q2=>{ for(let d=-2;d<=2;d++) if(g.has(q2[0],q2[1],pv[2]+d)) return false; return true; }; const cn=free(A)?A:B2; g.S(cn[0],cn[1],pv[2],mat); } g.S(i,j,h,mat); pv=q; }); }
+  function door(g,inU,w){ const c=g.c,cj=g.cj; for(let dj=-14;dj<=0;dj++) if(inU(0,dj,1)){ for(let t=-w;t<=w;t++){ g.S(c+t,cj+dj,1,B.AIR); g.S(c+t,cj+dj,2,B.AIR); g.S(c+t,cj+dj,3,B.AIR); } break; } }
+  // generic hollow tower from a plan function inU(di,dj,h)
+  function tower(g,inU,mat,n,floor){ const c=g.c,cj=g.cj,T=g.T, R=Math.ceil(g.W/2);
+    for(let h=1;h<=T;h++) for(let di=-R;di<=R;di++) for(let dj=-R;dj<=R;dj++){ if(!inU(di,dj,h)) continue;
+      const edge=!inU(di+1,dj,h)||!inU(di-1,dj,h)||!inU(di,dj+1,h)||!inU(di,dj-1,h), cap=!inU(di,dj,h+1);
+      if(edge||cap) g.S(c+di,cj+dj,h,mat(di,dj,h,edge,cap)); }
+    for(let di=-R;di<=R;di++) for(let dj=-R;dj<=R;dj++) if(inU(di,dj,1)||inU(di,dj,2)) g.S(c+di,cj+dj,0,floor||B.STONE_BRICKS);
+    if(n){ spiral(g,c,cj,n,B.PLANKS);
+      for(let di=-R;di<=R;di++) for(let dj=-R;dj<=R;dj++){ if(Math.abs(di)<=1&&Math.abs(dj)<=1) continue; if(!inU(di,dj,n)) continue;
+        const inter=inU(di+1,dj,n)&&inU(di-1,dj,n)&&inU(di,dj+1,n)&&inU(di,dj-1,n); if(inter) g.S(c+di,cj+dj,n,B.DARK_PLANKS); }
+      for(let k=0;k<2;k++) g.S(c,cj,n+1+k,B.AIR); }
+    door(g,inU,1); }
+  const G=(i,j,k)=>k;
+  const L={};
+  // ---------------- Burj Khalifa
+  L.burj=g=>{ const T=g.T, n=n82(T*.38);
+    const cw=h=>h<T*.78?2:(h<T*.9?1:0), Lw=h=>h<T*.16?8:h<T*.28?6:h<T*.4?4:h<T*.52?3:0, ww=h=>h<T*.52?2:0;
+    const inU=(di,dj,h)=>{ if(h>T) return false; const a=Math.abs(di),b2=Math.abs(dj), k=cw(h); if(a<=k&&b2<=k) return true; const w=ww(h), l=Lw(h); return (a<=w&&b2<=l)||(b2<=w&&a<=l); };
+    tower(g,inU,(di,dj,h,e,cap)=>(h>T*.78||cap)?B.IRON_BLOCK:(h%5===0?B.IRON_BLOCK:B.GLASS),n);
+    for(const [i,j] of [[-1,-1],[1,-1],[-1,1],[1,1]]) g.S(g.c+i,g.cj+j,1,B.LAMP);
+    g.S(g.c,g.cj,T,B.GLOWSTONE); return T; };
+  // ---------------- Empire State Building
+  L.empire=g=>{ const T=g.T, n=n82(T*.24);
+    const hx=h=>h<T*.3?5:h<T*.5?4:h<T*.64?3:h<T*.78?2:h<T*.9?1:0, hz=h=>h<T*.3?4:h<T*.5?3:h<T*.64?2:h<T*.78?2:h<T*.9?1:0;
+    const inU=(di,dj,h)=>h<=T&&Math.abs(di)<=hx(h)&&Math.abs(dj)<=hz(h);
+    tower(g,inU,(di,dj,h,e,cap)=>{ if(h>T-3) return B.GLOWSTONE; if(h>T*.78) return B.IRON_BLOCK; if(cap) return B.STONE_BRICKS; return (h%3===1&&!(Math.abs(di)===hx(h)&&Math.abs(dj)===hz(h)))?B.GLASS:B.STONE_BRICKS; },n);
+    return T; };
+  // ---------------- Eiffel Tower
+  L.eiffel=g=>{ const T=g.T, c=g.c,cj=g.cj, a=h=>rd(7*Math.pow(Math.max(0,1-h/(T*.6)),1.4)), h1=n82(T*.3), h2=rd(T*.62), beam=B.DARK_PLANKS, hb0=Math.max(4,rd(T*.13));
+    for(let h=0;h<=h2;h++){ const A=a(h), th=h<T*.35?2:1; for(const sx of [-1,1]) for(const sy of [-1,1]) for(let q=0;q<th;q++) for(let r=0;r<th;r++) g.S(c+sx*(A+q),cj+sy*(A+r),h,beam); }
+    for(let i=-9;i<=9;i++) for(let j=-9;j<=9;j++) if(Math.abs(i)<=a(0)+1&&Math.abs(j)<=a(0)+1&&(Math.abs(i)>=a(0)-1||Math.abs(j)>=a(0)-1)) g.S(c+i,cj+j,0,B.STONE_BRICKS);
+    const lv=[hb0,h1,rd(T*.46),h2];
+    lv.forEach((hb,idx)=>{ const A=a(hb)+1; for(let t=-A;t<=A;t++){ const dy=idx===0?-rd(3*Math.pow(Math.abs(t)/Math.max(1,A),2)):0; for(const s of [-A,A]){ g.S(c+t,cj+s,hb+dy,beam); g.S(c+s,cj+t,hb+dy,beam); } } });
+    for(let q=0;q<lv.length-1;q++){ const ha=lv[q], hb=lv[q+1], sp=hb-ha; for(let t=0;t<=sp;t++){ const h=ha+t, A=a(h)+(h<T*.35?1:0), u=rd((2*t/sp-1)*A); for(const s of [-A,A]) for(const uu of [u,-u]){ g.S(c+uu,cj+s,h,beam); g.S(c+s,cj+uu,h,beam); } } }
+    const A1=a(h1)+2; for(let i=-A1;i<=A1;i++) for(let j=-A1;j<=A1;j++){ if(Math.abs(i)<=1&&Math.abs(j)<=1) continue; g.S(c+i,cj+j,h1,(Math.abs(i)===A1||Math.abs(j)===A1)?B.IRON_BLOCK:B.DARK_PLANKS); if(Math.abs(i)===A1||Math.abs(j)===A1) g.S(c+i,cj+j,h1+1,B.GLASS); }
+    spiral(g,c,cj,h1,B.PLANKS);
+    const A2=a(h2)+2; for(let i=-A2;i<=A2;i++) for(let j=-A2;j<=A2;j++){ g.S(c+i,cj+j,h2,B.IRON_BLOCK); if(Math.abs(i)===A2||Math.abs(j)===A2) g.S(c+i,cj+j,h2+1,B.GLASS); }
+    for(let h=h2+1;h<=T;h++) g.S(c,cj,h,h>T*.85?B.IRON_BLOCK:beam); g.S(c,cj,T,B.GLOWSTONE); return T; };
+  // ---------------- Statue of Liberty
+  L.liberty=g=>{ const T=g.T, c=g.c,cj=g.cj, n=n82(T*.26), em=B.EMERALD_BLOCK, I=B.IRON_BLOCK;
+    for(let i=-6;i<=6;i++) for(let j=-6;j<=6;j++){ const m=Math.max(Math.abs(i),Math.abs(j)); g.S(c+i,cj+j,0,B.STONE_BRICKS); if(m>=5&&m<=6&&!(Math.abs(i)<=1&&j<0)) g.S(c+i,cj+j,1,B.STONE_BRICKS); if(m===6&&(Math.abs(i)===6||Math.abs(j)===6)&&(i+j)%2===0) g.S(c+i,cj+j,2,B.STONE_BRICKS); }
+    for(let h=1;h<n;h++) for(let i=-4;i<=4;i++) for(let j=-4;j<=4;j++){ if(Math.max(Math.abs(i),Math.abs(j))===4){ if(Math.abs(i)<=1&&j===-4&&h<=3) continue; g.S(c+i,cj+j,h,(h%5===0)?B.COBBLE:B.STONE_BRICKS); } }
+    for(let i=-5;i<=5;i++) for(let j=-5;j<=5;j++){ if(Math.abs(i)<=1&&Math.abs(j)<=1) continue; g.S(c+i,cj+j,n,B.STONE_BRICKS); if(Math.max(Math.abs(i),Math.abs(j))===5) g.S(c+i,cj+j,n+1,B.STONE_BRICKS); }
+    spiral(g,c,cj,n,B.PLANKS);
+    for(const [i,j] of [[-2,-2],[2,-2],[-2,2],[2,2]]) for(let h=n+1;h<=n+2;h++) g.S(c+i,cj+j,h,B.STONE_BRICKS);
+    const s0=n+3, bh=Math.max(7,Math.min(rd(T*.34),T-s0-8));
+    for(let i=-2;i<=2;i++) for(let j=-2;j<=2;j++){ g.S(c+i,cj+j,s0,B.STONE_BRICKS); if(Math.abs(i)<2&&Math.abs(j)<2) g.S(c+i,cj+j,s0+1,B.STONE_BRICKS); }
+    for(let k=0;k<bh;k++){ const h=s0+2+k, half=k<bh*.5?1:(k<bh*.8?1:0); for(let i=-half;i<=half;i++) for(let j=-half;j<=half;j++) g.S(c+i,cj+j,h,(k%4===3)?B.WOOL_GREEN:em); }
+    const sh=s0+2+rd(bh*.78), ah=Math.max(3,rd(bh*.55));
+    for(let k=0;k<ah;k++) g.S(c-2,cj,sh+k-1,em); for(let k=0;k<ah;k++) g.S(c-2,cj,sh-1,em);   // raised arm
+    g.S(c-1,cj,sh-1,em); g.S(c-2,cj,sh+ah-1,B.GOLD_BLOCK); g.S(c-3,cj,sh+ah-1,B.GOLD_BLOCK); g.S(c-2,cj,sh+ah,B.GLOWSTONE); g.S(c-2,cj,sh+ah+1,B.GLOWSTONE);
+    g.S(c+2,cj,sh-3,em); g.S(c+2,cj-1,sh-3,em); g.S(c+2,cj-1,sh-2,B.STONE_BRICKS); g.S(c+2,cj-2,sh-2,B.STONE_BRICKS); g.S(c+2,cj-2,sh-3,B.STONE_BRICKS);  // tablet
+    const hh=s0+2+bh; g.S(c,cj,hh,em); g.S(c,cj,hh+1,em); for(const [i,j] of [[-1,0],[1,0],[0,-1],[0,1]]) g.S(c+i,cj+j,hh+1,B.GOLD_BLOCK); for(const [i,j] of [[-1,-1],[1,-1],[-1,1],[1,1]]) g.S(c+i,cj+j,hh+2,B.GOLD_BLOCK); g.S(c,cj,hh+2,B.GOLD_BLOCK);
+    return hh+3; };
+  // ---------------- stadiums (Colosseum / Bernabeu)
+  function stadium(g,o){ const T=g.T, c=g.c,cj=g.cj, m=(o.a+o.b)/2, Hw=Math.max(8,Math.min(o.H,T)), sd=m*o.sd, Hs=Math.max(3,rd(sd)), t=1.9/m;
+    const rho=(di,dj)=>Math.pow(Math.pow(Math.abs(di)/o.a,o.p)+Math.pow(Math.abs(dj)/o.b,o.p),1/o.p);
+    const R=Math.ceil(o.a)+1, RB=Math.ceil(o.b)+1;
+    for(let di=-R;di<=R;di++) for(let dj=-RB;dj<=RB;dj++){ const r=rho(di,dj); if(r>1.0001) continue; const I=c+di, J=cj+dj;
+      const inter=(1-r)*m;
+      g.S(I,J,0,B.STONE_BRICKS);
+      if(inter<=1.7){ const ang=Math.atan2(dj/o.b,di/o.a), sec=Math.floor((ang+P)/(2*P)*o.N);
+        for(let h=1;h<=Hw;h++){ let id=o.wall; const open=(sec%2===0)&&((h>=1&&h<=3)||(o.upper&&h>=rd(Hw*.5)&&h<=rd(Hw*.5)+2)); if(open&&h>1&&h<=3&&false) {} if(open&&h<=3&&h>=1&&(h<=2||o.arch3)) continue; if(open&&h>3) continue; if(h===Hw) id=o.cap; else if(h%o.band===0) id=o.bandMat; g.S(I,J,h,id); }
+        if(o.roof){ } }
+      else if(inter>1.7+0.6&&inter<=1.7+0.6+sd){ const d=inter-2.3, hh=Math.max(1,rd(Hs-(d/sd)*(Hs-1)));
+        for(let h=1;h<=hh;h++) g.S(I,J,h,h===hh?((Math.floor(d)%2)?o.seat:o.seat2):o.fill); }
+      else if(inter>1.7&&inter<=2.3) { for(let h=1;h<=Hs;h++) g.S(I,J,h,o.fill); }
+      else { g.S(I,J,0,o.floor); }
+      if(o.roof&&inter>0&&inter<=o.roof){ const hh=Hw+(o.roofLift||0); g.S(I,J,hh,o.roofMat); if(inter<o.roof-1.2&&((di+dj)%5===0)) {} }
+    }
+    // gates: 3-wide tunnels along both axes through walls and stands
+    for(let di=-R;di<=R;di++) for(let dj=-RB;dj<=RB;dj++){ if(rho(di,dj)>1.0001) continue; const inter=(1-rho(di,dj))*m; if(inter>sd+4) continue;
+      if(Math.abs(dj)<=1||Math.abs(di)<=1){ for(let h=1;h<=3;h++) g.S(c+di,cj+dj,h,B.AIR); if(inter>1.7&&(Math.abs(dj)<=1?Math.abs(dj)===1:Math.abs(di)===1)&&false) {} } }
+    return Hw; }
+  L.colosseum=g=>{ const Hw=stadium(g,{a:18,b:15,p:2,sd:.5,N:56,H:g.T,wall:B.SANDSTONE,cap:B.SANDSTONE,band:6,bandMat:B.STONE_BRICKS,fill:B.SANDSTONE,seat:B.STONE_BRICKS,seat2:B.SANDSTONE,floor:B.SAND,upper:true});
+    // broken upper rim on the +x side for the ruin look
+    for(let i=5;i<=18;i++) for(let j=-9;j<=3;j++) for(let h=rd(Hw*.62);h<=Hw;h++) g.S(g.c+i,g.cj+j+0,h,B.AIR); return Hw; };
+  L.bernabeu=g=>{ const a=20,b=15; const Hw=stadium(g,{a,b,p:4,sd:.36,N:72,H:Math.min(g.T,16),wall:B.WOOL_WHITE,cap:B.WOOL_WHITE,band:5,bandMat:B.GLASS,fill:B.STONE,seat:B.WOOL_WHITE,seat2:B.WOOL_BLUE,floor:B.GRASS,upper:false,roof:7.5,roofMat:B.WOOL_WHITE,roofLift:0});
+    const c=g.c,cj=g.cj, pa=9, pb=6;
+    for(let i=-pa;i<=pa;i++) for(let j=-pb;j<=pb;j++){ const line=Math.abs(i)===pa||Math.abs(j)===pb||i===0||(i*i+j*j>=9&&i*i+j*j<=13)||((Math.abs(i)===pa-3)&&Math.abs(j)<=3)||((Math.abs(i)===pa-1)&&Math.abs(j)<=1&&false); g.S(c+i,cj+j,0,line?B.WOOL_WHITE:B.GRASS); }
+    for(const s of [-1,1]){ for(const j of [-1,1]) for(let h=1;h<=2;h++) g.S(c+s*(pa+1),cj+j*2,h,B.IRON_BLOCK); for(let j=-1;j<=1;j++) g.S(c+s*(pa+1),cj+j*2,2,B.IRON_BLOCK); }
+    // plain original club-style emblem (not a real crest) on the south wall
+    const ez=cj-b-1, eh=Math.max(5,rd(Hw*.45)); for(let u=-4;u<=4;u++) for(let v=-4;v<=4;v++){ const r2=u*u+v*v; if(r2>20) continue; g.S(c+u,ez,eh+v+4,r2>13?B.GOLD_BLOCK:(r2<=2?B.WOOL_WHITE:B.WOOL_BLUE)); }
+    for(const [i,j] of [[-16,-12],[16,-12],[-16,12],[16,12]]) { for(let h=Hw;h<=Hw+5;h++) g.S(c+i,cj+j,h,B.IRON_BLOCK); g.S(c+i,cj+j,Hw+6,B.GLOWSTONE); g.S(c+i+1,cj+j,Hw+6,B.GLOWSTONE); g.S(c+i-1,cj+j,Hw+6,B.GLOWSTONE); }
+    return Hw+7; };
+  // ---------------- Pyramids of Giza (all three enterable)
+  function pyramid(g,i0,j0,base,mat,doorW){ const H=Math.floor((base+1)/2); const s=H;
+    for(let h=0;h<H;h++){ const inset=h; for(let j=inset;j<base-inset;j++) for(let i=inset;i<base-inset;i++) g.S(i0+i,j0+j,h,h===0?B.SANDSTONE:mat); }
+    g.S(i0+(base>>1),j0+(base>>1),H-1,B.GOLD_BLOCK);
+    // entrance corridor + chamber
+    const mid=i0+(base>>1), cw=Math.max(1,base>>3)+1, ch=Math.max(2,Math.min(6,Math.floor(base/2-cw-1))), mj=j0+(base>>1);
+    for(let j=j0;j<=mj-cw;j++) for(let w=-1;w<=1;w++) for(let h=1;h<=3;h++) g.S(mid+(w===0?0:w*(base>16?1:0)),j,h,B.AIR);
+    for(let j=mj-cw;j<=mj+cw;j++) for(let i=mid-cw;i<=mid+cw;i++) for(let h=1;h<=ch;h++) g.S(i,j,h,B.AIR);
+    { const fw=base>16?2:1; for(let h=1;h<=3;h++){ g.S(mid-fw,j0,h,B.STONE_BRICKS); g.S(mid+fw,j0,h,B.STONE_BRICKS); } for(let t=-fw;t<=fw;t++) g.S(mid+t,j0,4,B.STONE_BRICKS); }
+    if(base>12){ g.S(mid,mj,1,B.GOLD_BLOCK); g.S(mid,mj+1,1,B.GOLD_BLOCK); g.S(mid,mj,2,B.GOLD_BLOCK); g.S(mid,mj+1,2,B.GOLD_BLOCK); for(const [di,dj] of [[-cw,-cw],[cw,-cw],[-cw,cw],[cw,cw]]) { g.S(mid+di,mj+dj,1,B.LAPIS_BLOCK); g.S(mid+di,mj+dj,2,B.LAMP); } }
+    else { g.S(mid,mj,1,B.GOLD_BLOCK); g.S(mid,mj,2,B.LAMP); }
+    for(let j=j0+2;j<=mj-cw;j+=3) { g.S(mid-1,j,3,B.LAMP); }
+  }
+  L.pyramids=g=>{ pyramid(g,0,0,27,B.SANDSTONE); pyramid(g,30,2,17,B.SANDSTONE); pyramid(g,49,4,11,B.SANDSTONE);
+    for(let i=0;i<60;i++) for(let j=0;j<29;j++) if(!g.has(i,j,0)) g.S(i,j,0,B.SAND);
+    return 14; };
+  // ---------------- Leaning Tower (Pisa)
+  L.pisa=g=>{ const T=g.T, c=g.c,cj=g.cj, lean=Math.min(2.4,T*.07), dx=h=>rd(h/T*lean), R=4.5, Ri=3.5, tier=Math.max(3,Math.floor((T-3)/8)), nTop=(()=>{ let m=Math.max(1,Math.floor((T-8-2)/8)); return m*8+2; })();
+    for(let i=-7;i<=7;i++) for(let j=-7;j<=7;j++){ if(i*i+j*j<=7.6*7.6) g.S(c+i,cj+j,0,B.STONE_BRICKS); }
+    for(let h=1;h<=T;h++){ const x0=c+dx(h), tr=Math.floor((h-1)/tier);
+      for(let i=-5;i<=5;i++) for(let j=-5;j<=5;j++){ const d2=i*i+j*j; if(d2>R*R+.3) continue; const wall=d2>=Ri*Ri;
+        if(!wall){ if(h===T) g.S(x0+i,cj+j,h,B.STONE_BRICKS); continue; }
+        const ang=Math.atan2(j,i), sec=Math.floor((ang+P)/(2*P)*20), rel=(h-1)%tier, open=(sec%2===0)&&rel>=1&&rel<=tier-2&&h>2&&h<T-1&&h<nTop+5;
+        if(h<=2&&Math.abs(i)<=1&&j<0) continue;
+        if(open) continue; g.S(x0+i,cj+j,h,(rel===0||h===T)?B.STONE_BRICKS:B.WOOL_WHITE); } }
+    const cells=[]; for(let k=0;k<nTop;k++){ const r=ring8[k%8]; cells.push([c+dx(k+1)+r[0],cj+r[1],k+1]); } path(g,cells,B.PLANKS);
+    const xt=c+dx(nTop); for(let i=-3;i<=3;i++) for(let j=-3;j<=3;j++){ if(i*i+j*j>=Ri*Ri) continue; if(Math.abs(i)<=1&&Math.abs(j)<=1) continue; g.S(xt+i,cj+j,nTop,B.DARK_PLANKS); }
+    for(let i=-3;i<=3;i++) for(let j=-3;j<=3;j++){ if(i*i+j*j<Ri*Ri) g.S(c+dx(nTop+5)+i,cj+j,nTop+5,B.STONE_BRICKS); }
+    for(let k=0;k<2;k++) g.S(xt,cj,nTop+1+k,B.AIR);
+    return T; };
+  return L; })();
+const LANDMARKS=[
+  {n:'Burj Khalifa',e:'🏙️',gen:LMK.burj,W:19,D:19,H:44,key:'burj'},
+  {n:'Colosseum',e:'🏛️',gen:LMK.colosseum,W:41,D:35,H:22,key:'colosseum'},
+  {n:'Eiffel Tower',e:'🗼',gen:LMK.eiffel,W:21,D:21,H:42,key:'eiffel'},
+  {n:'Empire State Building',e:'🏢',gen:LMK.empire,W:13,D:11,H:44,key:'empire'},
+  {n:'Statue of Liberty',e:'🗽',gen:LMK.liberty,W:15,D:15,H:38,key:'liberty'},
+  {n:'Santiago Bernabéu Stadium',e:'🏟️',gen:LMK.bernabeu,W:45,D:35,H:16,key:'bernabeu'},
+  {n:'Pyramids of Giza',e:'🔺',gen:LMK.pyramids,W:61,D:31,H:14,key:'pyramids'},
+  {n:'Leaning Tower of Pisa',e:'🗼',gen:LMK.pisa,W:15,D:15,H:34,key:'pisa'}
+].map(o=>Object.assign({shape:'lm',w:o.W,d:o.D,F:3,fh:4,big:1,rich:1,lm:1,ex:[],pre:[],roofStyle:'flat',win:B.GLASS},o));
+LANDMARKS.forEach((sp,k)=>{ sp.id=1200+k; HOUSES.push(sp); ITEMS[sp.id]={name:sp.n,e:sp.e,house:HOUSES.length-1,desc:'landmark - right-click the ground to build it ('+sp.W+'x'+sp.D+', up to '+sp.H+' tall). You can walk inside; build on low ground for full height'}; });
+
 // ---- 10 helicopter models (items 215..224)
 const HELIS=[
   {n:'Police Helicopter',body:0x1f3fa8,acc:0xf2f2f2,style:'std',light:1},{n:'Rescue Helicopter',body:0xd32f2f,acc:0xf2f2f2,style:'std'},
@@ -2791,7 +2926,7 @@ const INV_TABS=[
   {id:'urban',title:'Roads, tiles & roofs',icon:PCAT.urban[0],ids:PCAT.urban},
   {id:'tech2',title:'Tech, metals & gems',icon:PCAT.tech[0],ids:PCAT.tech},
   {id:'neon',title:'Neon & lights',icon:PCAT.light[1],ids:PCAT.light},
-  {id:'houses',title:'Houses (30)',icon:HOUSES[0].id,ids:HOUSES.map(h=>h.id)},
+  {id:'houses',title:'Houses & landmarks (38)',icon:HOUSES[0].id,ids:HOUSES.map(h=>h.id)},
   {id:'doors',title:'Doors',icon:DOORS[0].id,ids:DOORS.map(d=>d.id)},
   {id:'tech',title:'TVs, computers & laptops',icon:B.COMPUTER,ids:[...TVM.map(m=>m.off),...CPM.map(m=>m.id),...LPM.map(m=>m.id),...HM.ftvs]},
   {id:'furniture',title:'Furniture',icon:B.SOFA,ids:[B.SOFA,B.BED,B.TABLE,B.DESK,B.CHAIR,B.CABINET,B.FRIDGE,B.STOVE,B.CARPET,B.PLANT,B.PIANO,B.BOOKSHELF,B.LAMP,B.TV_OFF,B.TV_ON,B.COMPUTER,...HM.sofas,...HM.beds]},
@@ -3703,6 +3838,7 @@ function buildHouse(sp,face,ax,ay,az){
     const ok=(i,j)=>(i-c)**2+(j-c)**2<=(R-3)**2&&!(i===c&&j<=3); furnish(sp.pre?sp.pre[0]:'living',0,c-R+3,c+R-3,c-R+3,c+R-3,ok);
     for(const [i,j] of [[c,c],[c-3,c],[c+3,c]]) if(ok(i,j)&&!cells.has(i+','+j+',1')) S(i,j,R-2,B.LAMP);
     topAll=R; }
+  else if(sp.shape==='lm'){ const T=Math.max(12,Math.min(sp.H,CH-3-ay)); topAll=sp.gen({S,B,W:sp.W,D:sp.D,c:cx,cj:sp.D>>1,T,has:(i,j,h)=>cells.has(i+','+j+','+h)})||T; }
   else if(sp.shape==='bunker'){ const h0=-7, top=boxPart({w:W,d:D,F:1,h0,wall:sp.wall,corner:sp.corner,floor:sp.floor,roof:sp.roof,roofStyle:'flat',winPat:'none',door:sp.door,pre:sp.pre,carve:true});
     for(let m=1;m<=7;m++) for(let i=cx-1;i<=cx+1;i++){ S(i,-m,h0+m,B.STONE_BRICKS); for(let h=h0+m+1;h<=Math.max(h0+m+3,3);h++) if(h<=h0+m+3||h<=3) S(i,-m,h,AIR); }
     for(let m=1;m<=7;m++) for(const i of [cx-2,cx+2]) for(let h=h0+m;h<=Math.min(h0+m+3,0);h++) S(i,-m,h,B.STONE_BRICKS);
@@ -4192,7 +4328,7 @@ function placeHouse(id){
   const bb=list.bbox, p=player.pos;
   if(p.x>bb.x0&&p.x<bb.x1+1&&p.z>bb.z0&&p.z<bb.z1+1){ const gx=target.x+.5-jx*4, gz=target.z+.5-jz*4; player.pos.set(gx,groundAt(gx,gz,ay+4)+0.01,gz); }
   if(!creative){ inv[id]--; ui.renderHotbar(); updateStats(); }
-  ui.toast(sp.n+' built'+(missing?' (part of it is outside the loaded area)':'')+' — walk up to the door and right-click it');
+  ui.toast(sp.n+' built'+(missing?' (part of it is outside the loaded area)':'')+(sp.lm?(sp.H>CH-3-ay?' (scaled down - build on lower ground for full height). Walk inside!':' - walk inside!'):' — walk up to the door and right-click it'));
 }
 
 // ---------- main loop
