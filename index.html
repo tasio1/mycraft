@@ -2217,11 +2217,154 @@ class World {
     return {x:.5,y:SEA_LEVEL+3,z:.5};
   }
 
+
+  /* ---- VILLAGES, CITIES AND ROADS (deterministic from the seed; one possible settlement per 192x192 region, roads link neighbours) ---- */
+  settleAt(x,z){ return this.settle(Math.floor(x/192),Math.floor(z/192)); }
+  settle(rx,rz){
+    if(!this.sc) this.sc=new Map(); const key=rx+','+rz; if(this.sc.has(key)) return this.sc.get(key);
+    let s=null; const r=this.hash(rx*7919+13,rz*104729+7), forced=(rx===0&&rz===0);
+    if(r>0.18||forced){
+      for(let t=0;t<6&&!s;t++){
+        const px=rx*192+64+Math.floor(this.hash(rx*31+t*5+1,rz*17+3)*64), pz=rz*192+64+Math.floor(this.hash(rx*13+7,rz*29+t*3+9)*64);
+        for(const type of (r>0.84&&!forced?[1,0]:[0])){
+          const R=type?36:28; let mn=99,mx=-99,sum=0,n=0,wetN=0;
+          for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++){ const h=this.heightAt(px+Math.round(a*R/2),pz+Math.round(b*R/2)); if(h<=SEA_LEVEL+1){ wetN++; continue; } mn=Math.min(mn,h); mx=Math.max(mx,h); sum+=h; n++; }
+          if(wetN>(type?3:5)||n<12||mx-mn>(type?8:11)) continue; const y0=Math.max(SEA_LEVEL+2,Math.round(sum/n)); if(type&&y0>CH-30) continue;
+          const A=['Ber','Vik','Nor','Sol','Hel','Lun','Mar','Ost','Skov','Alb','Kar','Fre','Tor','Bak'], Z=['by','borg','ton','dal','havn','lev','rup','stad','holm','ning','vig','sted'];
+          s={rx,rz,x:px,z:pz,y0,R,type,n:A[Math.floor(this.hash(px,pz)*A.length)]+Z[Math.floor(this.hash(pz,px+5)*Z.length)]}; break; }
+      }
+    }
+    this.sc.set(key,s); return s;
+  }
+  groundH(x,z){
+    const h=this.heightAt(x,z), s=this.settleAt(x,z); if(!s) return h;
+    const dd=Math.max(Math.abs(x-s.x),Math.abs(z-s.z)); if(dd<=s.R+1) return s.y0; if(dd>=s.R+9) return h;
+    const t=(dd-s.R-1)/8; return Math.round(s.y0+(h-s.y0)*t);
+  }
+  roadRects(rx,rz){
+    if(!this.rcc) this.rcc=new Map(); const key=rx+','+rz; if(this.rcc.has(key)) return this.rcc.get(key);
+    const out=[], A=this.settle(rx,rz);
+    if(A){ const B=this.settle(rx+1,rz), C=this.settle(rx,rz+1);
+      if(B){ out.push({x0:Math.min(A.x,B.x),z0:A.z-2,x1:Math.max(A.x,B.x),z1:A.z+2,ax:0,c:A.z}, {x0:B.x-2,z0:Math.min(A.z,B.z),x1:B.x+2,z1:Math.max(A.z,B.z),ax:1,c:B.x}); }
+      if(C){ out.push({x0:A.x-2,z0:Math.min(A.z,C.z),x1:A.x+2,z1:Math.max(A.z,C.z),ax:1,c:A.x}, {x0:Math.min(A.x,C.x),z0:C.z-2,x1:Math.max(A.x,C.x),z1:C.z+2,ax:0,c:C.z}); } }
+    this.rcc.set(key,out); return out;
+  }
+  inSettle(x,z){ const s=this.settleAt(x,z); return !!s&&Math.max(Math.abs(x-s.x),Math.abs(z-s.z))<=s.R+10; }
+  settlePlan(s){
+    if(s.plan) return s.plan; const P=[], px=s.x, pz=s.z, R=s.R, y0=s.y0, h=(a,b)=>this.hash(px*3+a,pz*5+b);
+    const rect=(x0,z0,x1,z1,id)=>P.push({t:'r',x0,z0,x1,z1,id});
+    const lamp=(x,z)=>P.push({t:'lamp',x0:x,z0:z,x1:x,z1:z});
+    const bld=(x0,z0,w,d,door,kind,H,seed)=>P.push({t:'b',x0,z0,x1:x0+w-1,z1:z0+d-1,w,d,door,kind,H,seed});
+    if(!s.type){        // ---------- VILLAGE: main street + cross street, plaza with fountain, cottages, church, shop
+      rect(px-R,pz-2,px+R,pz+2,B.ASPHALT); rect(px-2,pz-R,px+2,pz+R,B.ASPHALT);
+      for(let x=px-R+1;x<=px+R-3;x+=8) if(Math.abs(x-px)>5) rect(x,pz,x+3,pz,B.ROAD_LINE);
+      for(let z=pz-R+1;z<=pz+R-3;z+=8) if(Math.abs(z-pz)>5) rect(px,z,px,z+3,B.ROAD_LINE);
+      rect(px-5,pz-5,px+5,pz+5,B.STONE_BRICKS); P.push({t:'fountain',x0:px,z0:pz,x1:px,z1:pz});
+      for(const [a,b] of [[-5,-5],[5,-5],[-5,5],[5,5]]) lamp(px+a,pz+b);
+      for(let x=-24;x<=24;x+=12) if(Math.abs(x)>6){ lamp(px+x,pz-3); lamp(px+x+6,pz+3); }
+      const xs=[px-26,px-15,px+7,px+18]; let k=0;
+      for(const x0 of xs){ const hn=h(k,1), hs2=h(k,2);
+        bld(x0,pz-12,9,9,'S',(x0===px+18)?'church':'house',3+Math.floor(hn*2),Math.floor(hn*1e6));
+        bld(x0,pz+4,9,9,'N',(x0===px-15)?'shop':'house',3+Math.floor(hs2*2),Math.floor(hs2*1e6)); k++; }
+      for(const [x,z] of [[-26,-15],[26,15],[-27,16],[27,-16]]) P.push({t:'tree',x0:px+x,z0:pz+z,x1:px+x,z1:pz+z});
+    } else {            // ---------- CITY: 3x3 street grid, 16 lots, central plaza
+      for(const o of [-30,0,30]){ rect(px-R,pz+o-2,px+R,pz+o+2,B.ASPHALT); rect(px+o-2,pz-R,px+o+2,pz+R,B.ASPHALT);
+        rect(px-R,pz+o-4,px+R,pz+o-3,B.STONE_BRICKS); rect(px-R,pz+o+3,px+R,pz+o+4,B.STONE_BRICKS);
+        rect(px+o-4,pz-R,px+o-3,pz+R,B.STONE_BRICKS); rect(px+o+3,pz-R,px+o+4,pz+R,B.STONE_BRICKS); }
+      for(const o of [-30,0,30]){ rect(px-R,pz+o-2,px+R,pz+o+2,B.ASPHALT); rect(px+o-2,pz-R,px+o+2,pz+R,B.ASPHALT); }
+      for(const o of [-30,0,30]){ for(let x=px-R+1;x<=px+R-3;x+=8){ rect(x,pz+o,x+3,pz+o,B.ROAD_LINE); rect(px+o,pz-R+(x-px+R-1),px+o,pz-R+(x-px+R-1)+3,B.ROAD_LINE); } }
+      rect(px-6,pz-6,px+6,pz+6,B.STONE_BRICKS); P.push({t:'fountain',x0:px,z0:pz,x1:px,z1:pz});
+      for(const a of [-30,0,30]) for(const b of [-30,0,30]){ lamp(px+a+4,pz+b+4); lamp(px+a-4,pz+b-4); }
+      for(let i=-R+8;i<=R-8;i+=10) for(const o of [-30,0,30]){ lamp(px+i,pz+o-4); lamp(px+o+4,pz+i); }
+      let k=0;
+      for(const bx of [-1,1]) for(const bz of [-1,1]) for(const lx of [0,1]) for(const lz of [0,1]){
+        const x0=px+(bx>0?5:-25)+lx*11, z0=pz+(bz>0?5:-25)+lz*11, cxl=x0+5-px, czl=z0+5-pz, dist=Math.hypot(cxl,czl);
+        const hh=h(k*7+1,k*3+2); k++;
+        if(hh<0.12){ P.push({t:'park',x0,z0,x1:x0+9,z1:z0+9,seed:Math.floor(hh*1e7)}); continue; }
+        const fl=clamp(Math.round(9-dist/9+hh*4),3,10);
+        const door=(Math.abs(cxl)>Math.abs(czl))?(cxl>0?'W':'E'):(czl>0?'N':'S');
+        bld(x0,z0,10,10,door,'tower',Math.min(fl*4,CH-4-y0),Math.floor(hh*1e6)); }
+    }
+    s.plan=P; return P;
+  }
+  placeSettlements(ch,hs){
+    const cx=ch.cx, cz=ch.cz, d=ch.data, X0=cx*CS, Z0=cz*CS, rx=Math.floor(cx/12), rz=Math.floor(cz/12); let busy=false;
+    const hit=(x0,z0,x1,z1,m)=>!(x1+(m||0)<X0||x0-(m||0)>X0+15||z1+(m||0)<Z0||z0-(m||0)>Z0+15);
+    const own=this.settle(rx,rz), inFoot=(x,z)=>{ for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){ const t=this.settle(rx+a,rz+b); if(t&&Math.max(Math.abs(x-t.x),Math.abs(z-t.z))<=t.R+1) return true; } return false; };
+    const clearTop=(x,z,y)=>{ for(let yy=y+1;yy<=Math.min(CH-1,y+9);yy++){ const i=yy*256+z*CS+x, b=d[i]; if(b===B.LOG||b===B.LEAVES) d[i]=B.AIR; } };
+    // -- rural roads (skipped inside settlement footprints; those have their own streets)
+    for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){ for(const r of this.roadRects(rx+a,rz+b)){ if(!hit(r.x0,r.z0,r.x1,r.z1,1)) continue; busy=true;
+      for(let z=Math.max(r.z0,Z0);z<=Math.min(r.z1,Z0+15);z++) for(let x=Math.max(r.x0,X0);x<=Math.min(r.x1,X0+15);x++){
+        if(inFoot(x,z)) continue; const lx=x-X0, lz=z-Z0, ci=lz*CS+lx; let y=hs[ci]; const top=Math.max(y,SEA_LEVEL+1);
+        for(let yy=y+1;yy<top;yy++) d[yy*256+ci]=(yy<=SEA_LEVEL?B.COBBLE:B.DIRT);
+        const mid=r.ax===0?(z===r.c):(x===r.c), dash=r.ax===0?(((x%8)+8)%8<4):(((z%8)+8)%8<4);
+        d[top*256+ci]=(mid&&dash)?B.ROAD_LINE:B.ASPHALT; for(let yy=top+1;yy<=Math.min(CH-1,top+3);yy++){ const i=yy*256+ci; if(d[i]===B.WATER||d[i]===B.LOG||d[i]===B.LEAVES) d[i]=B.AIR; } clearTop(lx,lz,top); hs[ci]=top; } } }
+    // -- the settlement itself
+    if(own&&hit(own.x-own.R-10,own.z-own.R-10,own.x+own.R+10,own.z+own.R+10)){ busy=true; const y0=own.y0;
+      for(let z=0;z<CS;z++)for(let x=0;x<CS;x++){ const wx=X0+x, wz=Z0+z; if(Math.max(Math.abs(wx-own.x),Math.abs(wz-own.z))<=own.R+1){ for(let yy=y0+1;yy<=Math.min(CH-1,y0+30);yy++) d[yy*256+z*CS+x]=B.AIR; } }
+      const put=(wx,y,wz,id)=>{ const x=wx-X0, z=wz-Z0; if(x<0||z<0||x>=CS||z>=CS||y<1||y>=CH) return; d[y*256+z*CS+x]=id; };
+      const rnd=(a,b,c)=>this.hash(a*131+c*7+own.x,b*71+c*13+own.z);
+      const WALL=[B.PLANKS,B.BIRCH_PLANKS,B.BRICKS,B.STONE_BRICKS,B.WOOL_WHITE,B.SANDSTONE,B.TERRACOTTA], ROOF=[B.WOOL_RED,B.DARK_PLANKS,B.COBBLE,B.WOOL_BLUE,B.TERRACOTTA,B.WOOL_GREEN];
+      for(const o of this.settlePlan(own)){
+        if(!hit(o.x0,o.z0,o.x1,o.z1,2)) continue;
+        if(o.t==='r'){ for(let z=Math.max(o.z0,Z0);z<=Math.min(o.z1,Z0+15);z++)for(let x=Math.max(o.x0,X0);x<=Math.min(o.x1,X0+15);x++) put(x,y0,z,o.id); }
+        else if(o.t==='lamp'){ for(let h=1;h<=4;h++) put(o.x0,y0+h,o.z0,B.IRON_BLOCK); put(o.x0,y0+5,o.z0,B.LAMP); }
+        else if(o.t==='fountain'){ for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++){ const edge=Math.max(Math.abs(a),Math.abs(b))===2; put(o.x0+a,y0+1,o.z0+b,edge?B.COBBLE:B.AIR); put(o.x0+a,y0,o.z0+b,edge?B.COBBLE:B.WATER); }
+          for(let h=1;h<=3;h++) put(o.x0,y0+h,o.z0,B.STONE_BRICKS); put(o.x0,y0+4,o.z0,B.GLOWSTONE); }
+        else if(o.t==='tree'){ for(let h=1;h<=4;h++) put(o.x0,y0+h,o.z0,B.LOG); for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++)for(let h=3;h<=6;h++){ if(Math.abs(a)+Math.abs(b)+(h-3)*.7>3.4) continue; if(!(a===0&&b===0&&h<=4)) put(o.x0+a,y0+h,o.z0+b,B.LEAVES); } }
+        else if(o.t==='park'){ for(let z=o.z0;z<=o.z1;z++)for(let x=o.x0;x<=o.x1;x++){ put(x,y0,z,B.GRASS); }
+          for(let n=0;n<3;n++){ const tx=o.x0+2+Math.floor(this.hash(o.seed+n,5)*6), tz=o.z0+2+Math.floor(this.hash(o.seed+n*7,9)*6); for(let h=1;h<=5;h++) put(tx,y0+h,tz,B.LOG); for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++)for(let h=4;h<=7;h++){ if(Math.abs(a)+Math.abs(b)+(h-4)*.8>3.5) continue; put(tx+a,y0+h,tz+b,B.LEAVES); } }
+          put(o.x0+4,y0+1,o.z0+4,B.TABLE); put(o.x0+5,y0+1,o.z0+5,B.CHAIR); }
+        else if(o.t==='b'){
+          const {x0,z0,w,d:dd,door,kind,H}=o, sd=o.seed, wall=WALL[sd%WALL.length], roof=ROOF[Math.floor(sd/7)%ROOF.length];
+          const P=(i,j,h,id)=>put(x0+i,y0+h,z0+j,id);
+          const dI=door==='S'||door==='N'?w>>1:(door==='E'?w-1:0), dJ=door==='E'||door==='W'?dd>>1:(door==='S'?dd-1:0);
+          const isDoor=(i,j)=>Math.abs(i-dI)+Math.abs(j-dJ)===0, isWin=(i,j,h)=>h===2&&((j===0||j===dd-1)?(i%3===1&&i>0&&i<w-1):(i===0||i===w-1)?(j%3===1&&j>0&&j<dd-1):false);
+          if(kind==='tower'){
+            const style=sd%4, wl=[B.GLASS,B.BRICKS,B.SANDSTONE,B.WOOL_WHITE][style], post=[B.IRON_BLOCK,B.STONE_BRICKS,B.STONE_BRICKS,B.IRON_BLOCK][style];
+            for(let j=0;j<dd;j++)for(let i=0;i<w;i++){ P(i,j,0,B.STONE_BRICKS);
+              const edge=i===0||j===0||i===w-1||j===dd-1, corner=(i===0||i===w-1)&&(j===0||j===dd-1), pil=edge&&((i===0||i===w-1)?j%3===0:i%3===0);
+              for(let h=1;h<=H;h++){ if(h%4===0){ P(i,j,h,edge?post:(h===H?B.STONE_BRICKS:B.WOOL_WHITE)); continue; }
+                if(!edge){ P(i,j,h,B.AIR); continue; }
+                const win=h%4===2||h%4===1||(style===0); let id=(corner||pil)?post:(win&&!(style>0&&h%4===3)?B.GLASS:wl); if(style===0&&!(corner||pil)) id=B.GLASS; P(i,j,h,id); } }
+            for(let i=1;i<w-1;i++)for(let j=1;j<dd-1;j++){ P(i,j,H+1,B.STONE_BRICKS); for(let f=1;f*4<H;f++) if(i===w>>1&&j===dd>>1) P(i,j,f*4+3,B.LAMP); }
+            for(let j=0;j<dd;j++)for(let i=0;i<w;i++){ if(i===0||j===0||i===w-1||j===dd-1) P(i,j,H+1,post); }
+            for(let a=-1;a<=0;a++) for(let h=1;h<=3;h++) P(dI+(door==='N'||door==='S'?a:0),dJ+(door==='E'||door==='W'?a:0),h,B.AIR);
+            P(dI,dJ,3,B.LAMP);
+            P(1,1,1,B.PLANT); P(w-2,1,1,B.SOFA); P(1,dd-2,1,B.SOFA);
+            if(sd%3===0){ const m=H+2; for(let h=m;h<m+4+(sd%5);h++) P(w>>1,dd>>1,h,B.IRON_BLOCK); P(w>>1,dd>>1,H+6+(sd%5),B.LAMP); }
+          } else {            // cottage / church / shop
+            const big=kind==='church', Hh=big?6:o.H, wl2=kind==='shop'||big?B.STONE_BRICKS:wall;
+            const ax=(door==='N'||door==='S'), L=ax?dd:w, E=ax?w:dd, RP=(a,c,h,id)=>ax?P(c,a,h,id):P(a,c,h,id);
+            for(let j=0;j<dd;j++)for(let i=0;i<w;i++){ const edge=i===0||j===0||i===w-1||j===dd-1; P(i,j,0,edge?B.COBBLE:B.DARK_PLANKS);
+              for(let h=1;h<=Hh;h++){ if(!edge){ P(i,j,h,B.AIR); continue; }
+                let id=wl2; if(isWin(i,j,h)||(big&&h>=2&&h<=4&&((j===0||j===dd-1)?i%2===0:j%2===0))) id=B.GLASS;
+                if(kind==='shop'&&((door==='N'&&j===0)||(door==='S'&&j===dd-1))&&h<=2&&i>0&&i<w-1) id=B.GLASS;
+                if((i===0||i===w-1)&&(j===0||j===dd-1)) id=B.LOG; P(i,j,h,id); } }
+            for(let k=0;2*k<=L-1;k++){ const h=Hh+1+k;
+              for(let c=-1;c<=E;c++){ RP(k,c,h,roof); RP(L-1-k,c,h,roof); if(k===0) for(let a=1;a<L-1;a++) RP(a,c,h,roof); }
+              if(k>0) for(let a=k+1;a<=L-2-k;a++){ RP(a,0,h,wl2); RP(a,E-1,h,wl2); } }
+            for(let a=-1;a<=0;a++) for(let h=1;h<=2;h++) P(dI+(ax?a:0),dJ+(ax?0:a),h,B.AIR);
+            const dr=DOORS[(sd>>3)%10].id; P(dI,dJ,1,dr); P(dI,dJ,2,dr);
+            P(w>>1,dd>>1,Hh,B.LAMP);
+            if(kind==='shop'){ for(let i=1;i<w-1;i+=2){ P(i,dd>>1,1,B.DESK); P(i,dd-2,1,B.BOOKSHELF); P(i,dd-2,2,B.BOOKSHELF);} }
+            else if(big){ for(let j=2;j<dd-2;j+=2){ P(2,j,1,B.CHAIR); P(3,j,1,B.CHAIR); P(w-3,j,1,B.CHAIR); P(w-4,j,1,B.CHAIR); } P(w>>1,1,1,B.TABLE);
+              const tI=w>>1, tJ=door==='S'?-3:dd+2;       // bell tower behind the church
+              for(let h=1;h<=13;h++) for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++){ const e=Math.abs(a)===2||Math.abs(b)===2; P(tI+a,tJ+b,h,e?((h>=8&&h<=10&&!(Math.abs(a)===2&&Math.abs(b)===2))?B.GLASS:B.STONE_BRICKS):B.AIR); }
+              for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++) P(tI+a,tJ+b,14,B.STONE_BRICKS);
+              for(let h=15;h<=18;h++) P(tI,tJ,h,B.STONE_BRICKS); P(tI,tJ,19,B.GOLD_BLOCK); P(tI-1,tJ,18,B.GOLD_BLOCK); P(tI+1,tJ,18,B.GOLD_BLOCK); }
+            else { P(1,1,1,B.BED); P(w-2,dd-2,1,B.TABLE); P(w-3,dd-2,1,B.CHAIR); P(1,dd-2,1,B.BOOKSHELF); P(1,dd-2,2,B.BOOKSHELF); P(w-2,1,1,B.PLANT); if(sd%3===0) P(w>>1,1,1,B.TV_ON); }
+          }
+        }
+      }
+    }
+    return busy;
+  }
   /* ---- terrain generation: deterministic from (seed, x, z) ---- */
   generate(cx,cz){
     const ch=new Chunk(cx,cz), d=ch.data, hs=new Int16Array(256);
     for(let z=0;z<CS;z++)for(let x=0;x<CS;x++){
-      const h=this.heightAt(cx*CS+x,cz*CS+z); hs[z*CS+x]=h;
+      const h=this.groundH(cx*CS+x,cz*CS+z); hs[z*CS+x]=h;
       const beach=h<=SEA_LEVEL+1, col=z*CS+x;
       for(let y=0;y<=h;y++){
         let id;
@@ -2237,8 +2380,9 @@ class World {
     for(let lz=-2;lz<CS+2;lz++)for(let lx=-2;lx<CS+2;lx++){
       const wx=cx*CS+lx, wz=cz*CS+lz;
       if(this.hash(wx,wz)>TREE_CHANCE) continue;
+      if(this.inSettle(wx,wz)) continue;
       const inside=lx>=0&&lx<CS&&lz>=0&&lz<CS;
-      const gh=inside?hs[lz*CS+lx]:this.heightAt(wx,wz);
+      const gh=inside?hs[lz*CS+lx]:this.groundH(wx,wz);
       if(gh<=SEA_LEVEL+1||gh>50) continue;
       const top=gh+4+Math.floor(this.hash(wx+911,wz-77)*3);
       const put=(x,y,z,id,onlyAir)=>{
@@ -2255,7 +2399,7 @@ class World {
       }
       for(let y=gh+1;y<=top;y++) put(lx,y,lz,B.LOG,false);
     }
-    this.placeHouses(ch,hs); this.carveMines(ch,d); this.placeTreasures(ch,hs);
+    const busyT=this.placeSettlements(ch,hs); if(!busyT) this.placeHouses(ch,hs); this.carveMines(ch,d); this.placeTreasures(ch,hs);
     // apply persisted player edits
     const m=this.mods.get(cx+','+cz);
     if(m) for(const [i,id] of m) d[i]=id;
@@ -3901,6 +4045,15 @@ function gmDraw(cv,ctx,cx,cz,bpp,showPins,big){
     ctx.beginPath(); ctx.moveTo(0,0); ctx.bezierCurveTo(-18,-16,-14,-40,0,-40); ctx.bezierCurveTo(14,-40,18,-16,0,0); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(0,-26,6.5,0,7); ctx.fill();
     if(label){ ctx.fillStyle=col; ctx.font='bold 10px sans-serif'; ctx.textAlign='center'; ctx.fillText(label,0,-22.5); } ctx.restore(); };
+  // roads and towns
+  { const r0=Math.floor((cx-W/2*bpp)/192)-1, r1=Math.floor((cx+W/2*bpp)/192)+1, q0=Math.floor((cz-H/2*bpp)/192)-1, q1=Math.floor((cz+H/2*bpp)/192)+1;
+    if((r1-r0+1)*(q1-q0+1)<=2600){
+      ctx.save(); ctx.lineCap='butt'; ctx.strokeStyle='#4a4d52'; ctx.lineWidth=Math.max(1.4,5/bpp);
+      for(let rx=r0;rx<=r1;rx++)for(let rz=q0;rz<=q1;rz++){ for(const r of world.roadRects(rx,rz)){ ctx.beginPath(); if(r.ax===0){ const y=sz(r.c+.5); ctx.moveTo(sx(r.x0),y); ctx.lineTo(sx(r.x1),y); } else { const x=sx(r.c+.5); ctx.moveTo(x,sz(r.z0)); ctx.lineTo(x,sz(r.z1)); } ctx.stroke(); } }
+      ctx.restore();
+      for(let rx=r0;rx<=r1;rx++)for(let rz=q0;rz<=q1;rz++){ const t=world.settle(rx,rz); if(!t) continue; const x=sx(t.x), y=sz(t.z), rr=Math.max(4,t.R/bpp);
+        ctx.save(); ctx.fillStyle=t.type?'rgba(120,120,135,.85)':'rgba(205,160,95,.85)'; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.fillRect(x-rr,y-rr,rr*2,rr*2); ctx.strokeRect(x-rr,y-rr,rr*2,rr*2);
+        if(t.type?bpp<=16:bpp<=4){ ctx.font='bold '+(big?12:9)+'px sans-serif'; ctx.textAlign='center'; ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.7)'; ctx.fillStyle='#fff'; ctx.strokeText(t.n,x,y-rr-4); ctx.fillText(t.n,x,y-rr-4); } ctx.restore(); } } }
   // route line
   const pts=[]; if(GPS.route.length){ pts.push([driving?driving.x:player.pos.x,driving?driving.z:player.pos.z]); for(const q of GPS.route) pts.push([q.x,q.z]); }
   if(pts.length>1){ ctx.save(); ctx.strokeStyle='rgba(30,120,255,.9)'; ctx.lineWidth=big?5:3; ctx.setLineDash([10,7]); ctx.beginPath(); pts.forEach((q,i)=>{ const x=sx(q[0]), y=sz(q[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); ctx.restore(); }
@@ -3924,7 +4077,8 @@ function gmBuild(){
   cv.onpointerup=e=>{ const g=GMAP.drag; GMAP.drag=null; if(!g||g.m>5) return; const r=px(), k=GMAP.cv.width/r.width, bpp=gmBpp();
     const wx=GMAP.cx+((e.clientX-r.left)*k-GMAP.cv.width/2)*bpp, wz=GMAP.cz+((e.clientY-r.top)*k-GMAP.cv.height/2)*bpp;
     let hit=null, hd=1e9; const all=[...GPS.stops,...(GPS.home?[GPS.home]:[])]; for(const q of all){ const d=Math.hypot(q.x-wx,q.z-wz)/bpp; if(d<22*k&&d<hd){ hd=d; hit=q; } }
-    GMAP.sel=hit?{x:hit.x,z:hit.z,pin:hit}:{x:Math.round(wx),z:Math.round(wz)}; gmRender(); };
+    let town=null; if(!hit){ const t=world.settleAt(wx,wz); if(t&&Math.max(Math.abs(wx-t.x),Math.abs(wz-t.z))<=Math.max(t.R,12*bpp)) town=t; }
+    GMAP.sel=hit?{x:hit.x,z:hit.z,pin:hit}:town?{x:town.x,z:town.z,town}:{x:Math.round(wx),z:Math.round(wz)}; gmRender(); };
   cv.addEventListener('wheel',e=>{ e.preventDefault(); gmZoom(e.deltaY<0?1:-1); },{passive:false});
   $('gmz1').onclick=()=>gmZoom(1); $('gmz0').onclick=()=>gmZoom(-1); $('gmme').onclick=()=>{ const m=driving||player.pos; GMAP.cx=m.x; GMAP.cz=m.z; gmRender(); };
   $('gmx').onclick=closeMap;
@@ -3939,11 +4093,11 @@ function gmRender(){
   const co=GMAP.callout, sel=GMAP.sel;
   if(sel){ const k=r.width/cv.width, x=((sel.x-GMAP.cx)/bpp+W/2)*k, y=((sel.z-GMAP.cz)/bpp+H/2)*k; co.style.display='block'; co.style.left=Math.max(80,Math.min(r.width-80,x))+'px'; co.style.top=Math.max(90,y-42)+'px';
     const me=driving||{x:player.pos.x,z:player.pos.z}, dist=Math.round(Math.hypot(sel.x-me.x,sel.z-me.z));
-    const ttl=sel.pin?sel.pin.n:'Dropped pin';
+    const ttl=sel.pin?sel.pin.n:sel.town?sel.town.n+(sel.town.type?' (city)':' (village)'):'Dropped pin';
     co.innerHTML='<b style="font-size:13px">'+ttl+'</b><br>x '+sel.x+', z '+sel.z+'<br>'+dist+' m from you<br>'+(sel.pin?'<button class="g" id="gmgo">Go here</button><button class="r" id="gmrm">Remove</button>':'<button class="g" id="gmgo">Go here</button><button id="gmst">Add stop</button><button id="gmhm">Set home</button>');
-    const go=$('gmgo'); if(go) go.onclick=()=>{ gpsPlan([sel.pin||{x:sel.x,z:sel.z,n:'Pinned spot'}],false); GMAP.sel=null; gmRender(); };
+    const go=$('gmgo'); if(go) go.onclick=()=>{ gpsPlan([sel.pin||{x:sel.x,z:sel.z,n:sel.town?sel.town.n:'Pinned spot'}],false); GMAP.sel=null; gmRender(); };
     const rm=$('gmrm'); if(rm) rm.onclick=()=>{ const q=sel.pin; if(q===GPS.home) GPS.home=null; else GPS.stops=GPS.stops.filter(z=>z!==q); GPS.route=GPS.route.filter(z=>z!==q); gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
-    const st=$('gmst'); if(st) st.onclick=()=>{ if(GPS.stops.length>=12){ ui.toast('GPS: max 12 stops'); return; } GPS.stops.push({x:sel.x,z:sel.z,n:'Stop '+(++GPS.seq)}); gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
+    const st=$('gmst'); if(st) st.onclick=()=>{ if(GPS.stops.length>=12){ ui.toast('GPS: max 12 stops'); return; } GPS.stops.push({x:sel.x,z:sel.z,n:sel.town?sel.town.n:'Stop '+(++GPS.seq)}); GPS.seq++; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
     const hm=$('gmhm'); if(hm) hm.onclick=()=>{ GPS.home={x:sel.x,z:sel.z,n:'Home'}; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
   } else co.style.display='none';
   // footer
