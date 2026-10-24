@@ -3771,22 +3771,130 @@ function gpsKey(code){
   return false;
 }
 function gpsUI(v){
-  if(!GPS.el){ const e=document.createElement('div'); e.style.cssText='position:fixed;left:14px;bottom:90px;width:205px;background:rgba(0,0,0,.6);border:2px solid #1f6f43;padding:7px 10px;font:12px monospace;color:#d8ffe6;z-index:5;pointer-events:none;display:none'; document.body.appendChild(e); GPS.el=e; }
+  if(!GPS.el){ const e=document.createElement('div'); e.style.cssText='position:fixed;left:14px;bottom:90px;width:205px;background:rgba(0,0,0,.6);border:2px solid #1f6f43;padding:7px 10px;font:12px monospace;color:#d8ffe6;z-index:5;pointer-events:none;display:none'; document.body.appendChild(e); GPS.el=e; const mc=document.createElement('canvas'); mc.width=mc.height=170; mc.style.cssText='display:block;width:185px;height:185px;border-radius:8px;margin-bottom:5px;border:2px solid #fff'; e.appendChild(mc); const tx=document.createElement('div'); e.appendChild(tx); GPS.mc=mc; GPS.tx=tx; }
   if(!GPS.built){ GPS.built=1; gpsBeacons(); }
   const e=GPS.el; if(!v||!GPS.on){ e.style.display='none'; for(const m of GPS.meshes) m.visible=!!v; return; }
   for(const m of GPS.meshes) m.visible=true;
   let nx=gpsNext();
   if(nx){ const d=Math.hypot(nx.x-v.x,nx.z-v.z), air=v.t==='plane'||v.t==='liner'||v.t==='heli', rad=air?(v.t==='liner'?40:18):7;
     if(d<rad){ ui.toast('GPS: arrived at '+nx.n); GPS.route.shift(); gpsBeacons(); nx=gpsNext(); if(!nx) ui.toast('GPS: trip complete'); } }
-  let h='<b style="color:#6df0a0">GPS</b><div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>J go home · K clear stops · L hide</div>';
+  let h='<b style="color:#6df0a0">GPS</b><div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>J go home · K clear · L hide · M big map</div>';
   if(nx){ const dx=nx.x-v.x, dz=nx.z-v.z, d=Math.hypot(dx,dz), tb=Math.atan2(-dx,-dz); let rel=tb-v.yaw; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
     const eta=d/Math.max(3,Math.abs(v.speed)), mm=Math.floor(eta/60), ss=Math.floor(eta%60);
     h+='<div style="display:flex;align-items:center;gap:10px;margin:5px 0"><div style="font-size:30px;line-height:30px;transform:rotate('+(-rel)+'rad);color:#ffa726">&#10148;</div><div style="font-size:15px"><b>'+nx.n+'</b><br>'+(d>=1000?(d/1000).toFixed(1)+' km':Math.round(d)+' m')+' &middot; ETA '+mm+':'+String(ss).padStart(2,'0')+'</div></div>'; }
   else h+='<div style="margin:4px 0;opacity:.8">No trip. Drive somewhere, press B to add a stop, H to set home, N to go.</div>';
   const list=[...GPS.stops.map(p=>p), ...(GPS.home?[GPS.home]:[])];
   if(list.length) h+=list.map(p=>(GPS.route[0]===p?'<span style="color:#ffa726">&#9654; ':'<span>&nbsp;&nbsp;')+p.n+(p===GPS.home?' &#127968;':'')+'</span>').join('<br>');
-  e.innerHTML=h; e.style.display='block';
+  GPS.tx.innerHTML=h; e.style.display='block'; GMAP.tick-=0; const now=performance.now(); if(!GPS.mt||now-GPS.mt>350){ GPS.mt=now; gmScan(2); gmChunk(Math.floor(v.x)>>4,Math.floor(v.z)>>4,false); gmDraw(GPS.mc,GPS.mc.getContext('2d'),v.x,v.z,v.t==='plane'||v.t==='liner'?2:1,true,false); }
 }
+
+// ---- GPS MAP: top-down map of the explored world (key M, also on foot). Tap/click to drop a pin, drag to move, wheel/+/- to zoom.
+const GMAP={cache:new Map(),colTab:null,open:false,cx:0,cz:0,zoom:1,sel:null,el:null,cv:null,ctx:null,callout:null,drag:null,tick:0,PX:640};
+function gmColor(id){
+  if(!GMAP.colTab){ GMAP.colTab=new Uint32Array(2048); GMAP.colTab.fill(0xff7a8f9a); }
+  const t=GMAP.colTab; if(t[id]!==0xff7a8f9a&&t[id]) return t[id]; if(!BLOCKS[id]){ return t[id]=0xff7a8f9a; }
+  const n=(BLOCKS[id].name||'').toLowerCase(); let rgb=0x9a8f80;
+  if(id===B.WATER||n.includes('water')) rgb=0x3d78d6; else if(id===B.GRASS||n.includes('grass')) rgb=0x5ea03a; else if(n.includes('leaves')||n.includes('leaf')) rgb=0x2f6b2c;
+  else if(n.includes('sand')) rgb=0xe2d28e; else if(n.includes('snow')||n.includes('ice')) rgb=0xf2f6fa; else if(n.includes('asphalt')||n.includes('road')) rgb=0x3a3d42;
+  else if(n.includes('dirt')||n.includes('mud')) rgb=0x8a5f3a; else if(n.includes('lava')||n.includes('magma')) rgb=0xf4631c; else if(n.includes('glass')) rgb=0xa9d6ee;
+  else if(n.includes('plank')||n.includes('wood')||n.includes('log')) rgb=0x9b7a45; else if(n.includes('brick')) rgb=0xa8523f; else if(n.includes('stone')||n.includes('cobble')||n.includes('rock')||n.includes('concrete')) rgb=0x8b8f93;
+  else if(n.includes('wool')||n.includes('carpet')){ rgb=n.includes('red')?0xc0392b:n.includes('blue')?0x3b6fd0:n.includes('green')?0x3f9a47:n.includes('yellow')?0xe5c93a:n.includes('black')?0x2a2a2a:0xe8e8e8; }
+  else if(n.includes('gold')) rgb=0xe6c34a; else if(n.includes('iron')) rgb=0xc9ccd0; else if(n.includes('terracotta')||n.includes('clay')) rgb=0xb86f50;
+  return t[id]=(0xff000000|((rgb&0xff)<<16)|(rgb&0xff00)|((rgb>>16)&0xff))>>>0;   // ABGR for ImageData
+}
+function gmChunk(cx,cz,force){
+  const k=cx+','+cz; let e=GMAP.cache.get(k); const now=performance.now();
+  if(e&&!force&&now-e.t<6000) return e;
+  if(!world||!world.chunks.has(k)) return e||null;
+  if(!e){ e={c:new Uint32Array(256),h:new Uint8Array(256),t:0}; GMAP.cache.set(k,e); }
+  for(let z=0;z<16;z++) for(let x=0;x<16;x++){ const wx=cx*16+x, wz=cz*16+z; let y=CH-1, id=0;
+    for(;y>=0;y--){ id=world.getBlock(wx,y,wz); if(id!==B.AIR&&!(BLOCKS[id]&&BLOCKS[id].leafy&&false)) break; }
+    e.c[z*16+x]=gmColor(id); e.h[z*16+x]=Math.max(0,y); }
+  e.t=now; return e;
+}
+function gmScan(budget){   // keep exploring: cache the loaded chunks around the player (a few per call)
+  if(!world||!player) return; const pcx=Math.floor(player.pos.x)>>4, pcz=Math.floor(player.pos.z)>>4; let n=0;
+  for(let r=0;r<=10&&n<budget;r++) for(let dz=-r;dz<=r&&n<budget;dz++) for(let dx=-r;dx<=r&&n<budget;dx++){ if(Math.max(Math.abs(dx),Math.abs(dz))!==r) continue; const k=(pcx+dx)+','+(pcz+dz); if(!GMAP.cache.has(k)&&world.chunks.has(k)){ gmChunk(pcx+dx,pcz+dz,true); n++; } }
+}
+function gmDraw(cv,ctx,cx,cz,bpp,showPins,big){
+  const W=cv.width, H=cv.height, img=ctx.createImageData(W,H), d=new Uint32Array(img.data.buffer), UN=0xff2a2e33;
+  for(let py=0;py<H;py++){ const wz=Math.floor(cz+(py-H/2)*bpp); const cz16=wz>>4;
+    for(let px=0;px<W;px++){ const wx=Math.floor(cx+(px-W/2)*bpp); const e=GMAP.cache.get((wx>>4)+','+cz16);
+      if(!e){ d[py*W+px]=((px>>3)+(py>>3))&1?UN:0xff31363b; continue; }
+      const i=(wz&15)*16+(wx&15); let c=e.c[i];
+      const hw=(wx&15)>0?e.h[i-1]:e.h[i], dh=e.h[i]-hw; const sh=dh>0?1.12:dh<0?0.86:1;
+      const r=Math.min(255,(c&255)*sh), g=Math.min(255,((c>>8)&255)*sh), b=Math.min(255,((c>>16)&255)*sh);
+      d[py*W+px]=0xff000000|(b<<16)|(g<<8)|r; } }
+  ctx.putImageData(img,0,0);
+  if(!showPins) return;
+  const sx=wx=>(wx-cx)/bpp+W/2, sz=wz=>(wz-cz)/bpp+H/2, sc=big?1:.62;
+  const pin=(x,y,col,label)=>{ ctx.save(); ctx.translate(x,y); ctx.scale(sc,sc); ctx.fillStyle=col; ctx.strokeStyle='#fff'; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.bezierCurveTo(-18,-16,-14,-40,0,-40); ctx.bezierCurveTo(14,-40,18,-16,0,0); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(0,-26,6.5,0,7); ctx.fill();
+    if(label){ ctx.fillStyle=col; ctx.font='bold 10px sans-serif'; ctx.textAlign='center'; ctx.fillText(label,0,-22.5); } ctx.restore(); };
+  // route line
+  const pts=[]; if(GPS.route.length){ pts.push([driving?driving.x:player.pos.x,driving?driving.z:player.pos.z]); for(const q of GPS.route) pts.push([q.x,q.z]); }
+  if(pts.length>1){ ctx.save(); ctx.strokeStyle='rgba(30,120,255,.9)'; ctx.lineWidth=big?5:3; ctx.setLineDash([10,7]); ctx.beginPath(); pts.forEach((q,i)=>{ const x=sx(q[0]), y=sz(q[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); ctx.restore(); }
+  GPS.stops.forEach((q,i)=>pin(sx(q.x),sz(q.z),GPS.route[0]===q?'#f57c00':'#e53935',String(i+1)));
+  if(GPS.home) pin(sx(GPS.home.x),sz(GPS.home.z),'#2e9d4f','H');
+  if(GMAP.sel&&big) pin(sx(GMAP.sel.x),sz(GMAP.sel.z),'#1e66f5','');
+  // me
+  const me=driving||{x:player.pos.x,z:player.pos.z,yaw:player.yaw}, mx=sx(me.x), my=sz(me.z);
+  ctx.save(); ctx.translate(mx,my); ctx.rotate(-me.yaw+Math.PI); ctx.fillStyle='#1a73e8'; ctx.strokeStyle='#fff'; ctx.lineWidth=2.5; const rr=big?10:7;
+  ctx.beginPath(); ctx.moveTo(0,rr*1.5); ctx.lineTo(rr,-rr); ctx.lineTo(0,-rr*.4); ctx.lineTo(-rr,-rr); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+}
+function gmBuild(){
+  if(GMAP.el) return;
+  const st=document.createElement('style'); st.textContent='#gmap{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;font-family:system-ui,sans-serif}#gmap .ph{width:min(560px,96vw);height:min(94vh,820px);background:#fff;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 10px 40px #000}#gmap .hd{background:#2e7d32;color:#fff;text-align:center;padding:12px;font-weight:700;position:relative}#gmap .hd b{position:absolute;right:14px;top:9px;cursor:pointer;font-size:20px}#gmap .mp{position:relative;flex:1;min-height:0;background:#2a2e33;touch-action:none}#gmap canvas{width:100%;height:100%;display:block}#gmap .zm{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px}#gmap .zm button{color:#222;width:38px;height:38px;border:0;border-radius:8px;background:#fff;font-size:22px;box-shadow:0 1px 5px #0006;cursor:pointer}#gmap .co{position:absolute;background:#fff;border-radius:10px;padding:8px 10px;box-shadow:0 2px 12px #0008;font-size:12px;color:#222;transform:translate(-50%,-100%);min-width:150px;display:none}#gmap .co:after{content:"";position:absolute;left:50%;bottom:-8px;margin-left:-8px;border:8px solid transparent;border-bottom:0;border-top-color:#fff}#gmap .co button,#gmap .ft button{border:0;border-radius:6px;padding:6px 9px;margin:3px 3px 0 0;background:#1a73e8;color:#fff;font-weight:600;cursor:pointer;font-size:12px}#gmap .co button.r{background:#d93025}#gmap .co button.g{background:#2e9d4f}#gmap .ft{padding:8px 10px;background:#f4f6f8;color:#222;font-size:12px;max-height:128px;overflow:auto}#gmap .ft button.o{background:#f57c00}#gmap .ft button.x{background:#777}';
+  document.head.appendChild(st);
+  const el=document.createElement('div'); el.id='gmap'; el.innerHTML='<div class="ph"><div class="hd">GPS Map<b id="gmx">&#10005;</b></div><div class="mp" id="gmp"><canvas id="gmc"></canvas><div class="zm"><button id="gmz1">+</button><button id="gmz0">&minus;</button><button id="gmme">&#9737;</button></div><div class="co" id="gmco"></div></div><div class="ft" id="gmft"></div></div>';
+  document.body.appendChild(el); GMAP.el=el; GMAP.cv=$('gmc'); GMAP.ctx=GMAP.cv.getContext('2d'); GMAP.callout=$('gmco');
+  const cv=GMAP.cv, px=()=>{ const r=cv.getBoundingClientRect(); return r; };
+  cv.onpointerdown=e=>{ cv.setPointerCapture(e.pointerId); GMAP.drag={x:e.clientX,y:e.clientY,cx:GMAP.cx,cz:GMAP.cz,m:0}; };
+  cv.onpointermove=e=>{ const g=GMAP.drag; if(!g) return; const r=px(), k=GMAP.cv.width/r.width*gmBpp(); const dx=e.clientX-g.x, dy=e.clientY-g.y; g.m=Math.max(g.m,Math.hypot(dx,dy)); if(g.m>5){ GMAP.cx=g.cx-dx*k; GMAP.cz=g.cz-dy*k; gmRender(); } };
+  cv.onpointerup=e=>{ const g=GMAP.drag; GMAP.drag=null; if(!g||g.m>5) return; const r=px(), k=GMAP.cv.width/r.width, bpp=gmBpp();
+    const wx=GMAP.cx+((e.clientX-r.left)*k-GMAP.cv.width/2)*bpp, wz=GMAP.cz+((e.clientY-r.top)*k-GMAP.cv.height/2)*bpp;
+    let hit=null, hd=1e9; const all=[...GPS.stops,...(GPS.home?[GPS.home]:[])]; for(const q of all){ const d=Math.hypot(q.x-wx,q.z-wz)/bpp; if(d<22*k&&d<hd){ hd=d; hit=q; } }
+    GMAP.sel=hit?{x:hit.x,z:hit.z,pin:hit}:{x:Math.round(wx),z:Math.round(wz)}; gmRender(); };
+  cv.addEventListener('wheel',e=>{ e.preventDefault(); gmZoom(e.deltaY<0?1:-1); },{passive:false});
+  $('gmz1').onclick=()=>gmZoom(1); $('gmz0').onclick=()=>gmZoom(-1); $('gmme').onclick=()=>{ const m=driving||player.pos; GMAP.cx=m.x; GMAP.cz=m.z; gmRender(); };
+  $('gmx').onclick=closeMap;
+}
+function gmBpp(){ return [.5,1,2,4,8][GMAP.zoom]; }
+function gmZoom(d){ GMAP.zoom=clamp(GMAP.zoom-d,0,4); gmRender(); }
+function gmRender(){
+  const cv=GMAP.cv, r=cv.getBoundingClientRect(); const W=Math.max(200,Math.round(r.width)), H=Math.max(200,Math.round(r.height)); if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
+  const bpp=gmBpp(); gmDraw(cv,GMAP.ctx,GMAP.cx,GMAP.cz,bpp,true,true);
+  // callout
+  const co=GMAP.callout, sel=GMAP.sel;
+  if(sel){ const k=r.width/cv.width, x=((sel.x-GMAP.cx)/bpp+W/2)*k, y=((sel.z-GMAP.cz)/bpp+H/2)*k; co.style.display='block'; co.style.left=Math.max(80,Math.min(r.width-80,x))+'px'; co.style.top=Math.max(90,y-42)+'px';
+    const me=driving||{x:player.pos.x,z:player.pos.z}, dist=Math.round(Math.hypot(sel.x-me.x,sel.z-me.z));
+    const ttl=sel.pin?sel.pin.n:'Dropped pin';
+    co.innerHTML='<b style="font-size:13px">'+ttl+'</b><br>x '+sel.x+', z '+sel.z+'<br>'+dist+' m from you<br>'+(sel.pin?'<button class="g" id="gmgo">Go here</button><button class="r" id="gmrm">Remove</button>':'<button class="g" id="gmgo">Go here</button><button id="gmst">Add stop</button><button id="gmhm">Set home</button>');
+    const go=$('gmgo'); if(go) go.onclick=()=>{ GPS.route=[sel.pin||{x:sel.x,z:sel.z,n:'Pinned spot'}]; gpsBeacons(); GMAP.sel=null; ui.toast('GPS: route set'); gmRender(); };
+    const rm=$('gmrm'); if(rm) rm.onclick=()=>{ const q=sel.pin; if(q===GPS.home) GPS.home=null; else GPS.stops=GPS.stops.filter(z=>z!==q); GPS.route=GPS.route.filter(z=>z!==q); gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
+    const st=$('gmst'); if(st) st.onclick=()=>{ if(GPS.stops.length>=12){ ui.toast('GPS: max 12 stops'); return; } GPS.stops.push({x:sel.x,z:sel.z,n:'Stop '+(++GPS.seq)}); gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
+    const hm=$('gmhm'); if(hm) hm.onclick=()=>{ GPS.home={x:sel.x,z:sel.z,n:'Home'}; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
+  } else co.style.display='none';
+  // footer
+  const ft=$('gmft'); let h='<b>Stops</b> ('+GPS.stops.length+'/12) &nbsp;'+(GPS.home?'&#127968; Home set':'no home yet')+'<br>';
+  h+='<button id="gmtrip" class="'+(GPS.route.length?'o':'')+'">'+(GPS.route.length?'Cancel trip':'Start trip')+'</button><button id="gmhome" '+(GPS.home?'':'style="opacity:.4"')+'>Go home</button><button class="x" id="gmclr">Clear stops</button> <span style="opacity:.6">Tap the map to drop a pin &middot; drag to move &middot; M to close</span>';
+  ft.innerHTML=h;
+  $('gmtrip').onclick=()=>{ if(GPS.route.length){ GPS.route=[]; } else { GPS.route=[...GPS.stops]; if(GPS.home) GPS.route.push(GPS.home); if(!GPS.route.length) ui.toast('Add stops or a home first'); } gpsBeacons(); gmRender(); };
+  $('gmhome').onclick=()=>{ if(GPS.home){ GPS.route=[GPS.home]; gpsBeacons(); gmRender(); } };
+  $('gmclr').onclick=()=>{ GPS.stops=[]; GPS.route=GPS.route.filter(p=>p===GPS.home); GPS.seq=0; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
+}
+function openMap(){
+  if(state!=='playing') return; gmBuild(); gmScan(60); const m=driving||player.pos;
+  state='map'; input.reset(); GMAP.cx=m.x; GMAP.cz=m.z; GMAP.sel=null; GMAP.open=true; GMAP.el.style.display='flex'; hideGpsMini(true);
+  if(document.pointerLockElement) document.exitPointerLock(); setTimeout(gmRender,30);
+}
+function closeMap(){ if(state!=='map') return; GMAP.open=false; GMAP.el.style.display='none'; state='playing'; hideGpsMini(false); lockPointer(); }
+function hideGpsMini(h){ if(GPS.el) GPS.el.style.visibility=h?'hidden':'visible'; }
+addEventListener('resize',()=>{ if(GMAP.open) gmRender(); });
+document.addEventListener('keydown',e=>{ if(e.repeat) return;
+  if(e.code==='KeyM'){ if(state==='playing'&&input.active()) openMap(); else if(state==='map') closeMap(); }
+  else if(e.code==='Escape'&&state==='map') closeMap(); });
 function vehKey(code){
   if(state!=='playing') return;
   if(gpsKey(code)) return;
