@@ -3820,6 +3820,7 @@ function gpsKey(code){
   if(code==='KeyY'){ const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(!t.length) ui.toast('GPS: add stops with B (and home with H) first'); else gpsPlan(t,true); return true; }
   if(code==='KeyJ'){ if(!GPS.home){ ui.toast('GPS: no home yet - press H where home is'); return true; } gpsPlan([GPS.home],false); return true; }
   if(code==='KeyK'){ GPS.stops=[]; GPS.route=GPS.route.filter(p=>p===GPS.home||(p.via&&false)); GPS.seq=0; gpsSave(); gpsBeacons(); ui.toast('GPS: stops cleared'); return true; }
+  if(code==='KeyU'){ if(!GPS.home){ ui.toast('GPS: no home set'); return true; } GPS.route=GPS.route.filter(q=>q!==GPS.home); GPS.home=null; gpsSave(); gpsBeacons(); ui.toast('GPS: home cleared'); return true; }
   if(code==='KeyO'){ apToggle(); return true; }
   if(code==='KeyL'){ GPS.on=!GPS.on; ui.toast('GPS '+(GPS.on?'shown':'hidden')); return true; }
   return false;
@@ -3832,7 +3833,7 @@ function gpsUI(v){
   let nx=gpsNext();
   if(nx){ const d=Math.hypot(nx.x-v.x,nx.z-v.z), air=v.t==='plane'||v.t==='liner'||v.t==='heli', rad=air?(v.t==='liner'?40:18):7;
     if(d<(nx.via?(air?30:9):rad)){ if(!nx.via) ui.toast('GPS: arrived at '+nx.n); GPS.route.shift(); if(!nx.via){ gpsBeacons(); } nx=gpsNext(); if(!nx) ui.toast('GPS: trip complete'); } }
-  let h='<b style="color:#6df0a0">GPS</b>'+(AP.on?' <b style="color:#ffeb3b">&#9679; AUTOPILOT</b>':'')+'<div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>Y best route · O autopilot · J home<br>K clear · L hide · M map</div>';
+  let h='<b style="color:#6df0a0">GPS</b>'+(AP.on?' <b style="color:#ffeb3b">&#9679; AUTOPILOT</b>':'')+'<div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>Y best route · O autopilot · J home<br>K clear stops · U clear home<br>L hide · M map</div>';
   if(nx){ const dx=nx.x-v.x, dz=nx.z-v.z, d=Math.hypot(dx,dz), tb=Math.atan2(-dx,-dz); let rel=tb-v.yaw; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
     const eta=d/Math.max(3,Math.abs(v.speed)), mm=Math.floor(eta/60), ss=Math.floor(eta%60);
     h+='<div style="display:flex;align-items:center;gap:10px;margin:5px 0"><div style="font-size:30px;line-height:30px;transform:rotate('+(-rel)+'rad);color:#ffa726">&#10148;</div><div style="font-size:15px"><b>'+(GPS.route.find(q=>!q.via)||nx).n+'</b><br>'+(()=>{ let t=0,c=[v.x,v.z]; for(const q of GPS.route){ t+=Math.hypot(q.x-c[0],q.z-c[1]); c=[q.x,q.z]; } return t>=1000?(t/1000).toFixed(1)+' km':Math.round(t)+' m'; })()+' &middot; ETA '+mm+':'+String(ss).padStart(2,'0')+'</div></div>'; }
@@ -3947,11 +3948,12 @@ function gmRender(){
   } else co.style.display='none';
   // footer
   const ft=$('gmft'); let h='<b>Stops</b> ('+GPS.stops.length+'/12) &nbsp;'+(GPS.home?'&#127968; Home set':'no home yet')+'<br>';
-  h+='<button class="g" id="gmbest" style="background:#2e9d4f">Find best route</button><button id="gmtrip" class="'+(GPS.route.length?'o':'')+'">'+(GPS.route.length?'Cancel trip':'Start trip')+'</button><button id="gmhome" '+(GPS.home?'':'style="opacity:.4"')+'>Go home</button><button class="x" id="gmclr">Clear stops</button> <span style="opacity:.6">Tap anywhere on the map, then press Go here &middot; drag to move &middot; M to close</span>';
+  h+='<button class="g" id="gmbest" style="background:#2e9d4f">Find best route</button><button id="gmtrip" class="'+(GPS.route.length?'o':'')+'">'+(GPS.route.length?'Cancel trip':'Start trip')+'</button><button id="gmhome" '+(GPS.home?'':'style="opacity:.4"')+'>Go home</button><button class="x" id="gmclr">Clear stops</button><button class="x" id="gmclh" '+(GPS.home?'':'style="opacity:.4"')+'>Clear home</button> <span style="opacity:.6">Tap anywhere on the map, then press Go here &middot; drag to move &middot; M to close</span>';
   ft.innerHTML=h;
   $('gmtrip').onclick=()=>{ if(GPS.route.length){ GPS.route=[]; gpsBeacons(); } else { const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(!t.length) ui.toast('Add stops or a home first'); else gpsPlan(t,false); } gmRender(); };
   $('gmbest').onclick=()=>{ const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(!t.length) ui.toast('Add stops or a home first'); else gpsPlan(t,true); gmRender(); };
   $('gmhome').onclick=()=>{ if(GPS.home){ gpsPlan([GPS.home],false); gmRender(); } };
+  $('gmclh').onclick=()=>{ if(GPS.home){ GPS.route=GPS.route.filter(q=>q!==GPS.home); GPS.home=null; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); } };
   $('gmclr').onclick=()=>{ GPS.stops=[]; GPS.route=GPS.route.filter(p=>p===GPS.home||(p.via&&false)); GPS.seq=0; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
 }
 function openMap(){
