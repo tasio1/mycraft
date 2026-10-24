@@ -1154,6 +1154,23 @@ const LINERS=[
   {n:'Budget Jet',L:30,R:3.4,span:34,ch:4.4,sw:.5,wz:1.5,gh:1.7,eng:[[-7,-1.3,-1.4],[7,-1.3,-1.4]],tail:'L',fin:6,body:0xfffde7,acc:0x7cb342,max:60,to:23,stall:15,acc2:.28,win:14,wr:.52},
   {n:'Desert Super-jumbo',L:62,R:6,span:68,ch:8.5,sw:.58,wz:3,gh:2.5,eng:[[-9,-2,-2.5],[9,-2,-2.5],[-19,-2,.4],[19,-2,.4]],tail:'L',fin:10.5,body:0xf5f5f5,acc:0xd7b56d,max:72,to:29,stall:19,acc2:.13,win:28,wr:.6,hump:1,big:1}];
 LINERS.forEach((l,k)=>{ l.id=1230+k; ITEMS[l.id]={name:l.n,e:'🛫',vehicle:'liner',variant:k,desc:'right-click to place (needs space!), F to fly: hold W for throttle, accelerate down a flat runway, pull the mouse back to take off. A/D bank, Space brake, V camera'}; });
+// ---- more cars (ids 1250-1263), driven like the Car
+const CARS=[
+  {n:'Family Sedan',col:0x1976d2,L:4.2,W:1.8,y0:.42,th:.55,cz:.3,cl:2.0,chh:.55,wr:.4,wb:1.35,max:26,acc:16,str:1.7},
+  {n:'Sports Car',col:0xfbc02d,L:4.2,W:1.9,y0:.28,th:.45,cz:.4,cl:1.5,chh:.4,wr:.38,wb:1.4,max:38,acc:24,str:1.9,spoil:1,stripe:0x111111},
+  {n:'SUV',col:0x2e7d32,L:4.4,W:2.0,y0:.6,th:.8,cz:.5,cl:2.6,chh:.7,wr:.5,wb:1.4,max:25,acc:15,str:1.6,rack:1},
+  {n:'Pickup Truck',col:0xc62828,L:5.0,W:2.0,y0:.62,th:.7,cz:-.9,cl:1.5,chh:.65,wr:.52,wb:1.6,max:24,acc:15,str:1.5,bed:1},
+  {n:'Delivery Van',col:0xf5f5f5,L:4.8,W:2.0,y0:.5,th:1.45,cz:.2,cl:3.6,chh:.2,wr:.45,wb:1.6,max:21,acc:12,str:1.4,box:1,stripe:0x1565c0},
+  {n:'School Bus',col:0xffc107,L:8.5,W:2.3,y0:.55,th:1.9,cz:0,cl:8.2,chh:.2,wr:.55,wb:2.9,max:18,acc:8,str:1.0,bus:1,stripe:0x111111},
+  {n:'Police Car',col:0x1a237e,L:4.3,W:1.85,y0:.42,th:.55,cz:.3,cl:2.0,chh:.55,wr:.4,wb:1.4,max:32,acc:21,str:1.8,lights:1,stripe:0xf5f5f5},
+  {n:'Taxi',col:0xffd600,L:4.2,W:1.8,y0:.42,th:.55,cz:.3,cl:2.0,chh:.55,wr:.4,wb:1.35,max:26,acc:16,str:1.7,sign:1,stripe:0x111111},
+  {n:'Formula Racer',col:0xe53935,L:4.8,W:1.9,y0:.22,th:.3,cz:.3,cl:.8,chh:.35,wr:.42,wb:1.6,max:52,acc:34,str:2.1,f1:1},
+  {n:'Monster Truck',col:0x6a1b9a,L:4.6,W:2.4,y0:1.4,th:.7,cz:.2,cl:2.0,chh:.7,wr:1.05,wb:1.5,max:20,acc:14,str:1.3,flame:1},
+  {n:'Off-road Jeep',col:0x556b2f,L:3.6,W:1.8,y0:.62,th:.6,cz:.4,cl:1.5,chh:.55,wr:.5,wb:1.2,max:23,acc:15,str:1.9,open:1,spare:1},
+  {n:'Limousine',col:0x111111,L:7.8,W:1.9,y0:.42,th:.6,cz:.5,cl:5.2,chh:.55,wr:.4,wb:2.7,max:25,acc:12,str:1.2,stripe:0xd4af37},
+  {n:'Fire Truck',col:0xd50000,L:7.2,W:2.2,y0:.65,th:1.1,cz:-2.4,cl:1.9,chh:.8,wr:.6,wb:2.5,max:20,acc:10,str:1.1,ladder:1,lights:1},
+  {n:'Farm Tractor',col:0x43a047,L:3.8,W:1.9,y0:.7,th:.7,cz:.6,cl:1.2,chh:1.0,wr:.45,wr2:.9,wb:1.2,max:12,acc:7,str:1.8,open:1,tractor:1}];
+CARS.forEach((c,k)=>{ c.id=1250+k; ITEMS[c.id]={name:c.n,e:k===5||k===12?'🚌':k===13?'🚜':k===9||k===3||k===2||k===10?'🛻':'🚗',vehicle:'auto',variant:k,desc:'right-click to place, F to drive (W/S, A/D, Space brake, Shift boost, V camera)'}; });
 
 LOOT.rare.push([HOUSES[1].id,1],[HOUSES[7].id,1],[HELIS[1].id,1]); LOOT.legendary.push([HOUSES[4].id,1],[HOUSES[26].id,1],[HELIS[9].id,1]);
 I.PLANE=61; ITEMS[I.PLANE]={name:'Airplane',e:'✈️',vehicle:'plane',desc:'right-click to place, F to fly: W/S throttle, mouse or arrows pitch, A/D bank, Space brake'};
@@ -1194,6 +1211,7 @@ const RECIPES = [
 HOUSES.forEach(h=>RECIPES.push({out:h.id,n:1,in:houseCost(h)}));
 HELIS.forEach(h=>RECIPES.push({out:h.id,n:1,in:[[I.IRON,10],[B.GLASS,3],[I.GOLD,2],[I.COAL,2]]}));
 LINERS.forEach((l,k)=>RECIPES.push({out:l.id,n:1,in:[[I.IRON,12+k*3],[B.GLASS,4],[I.GOLD,2+(k>>1)],[I.COAL,3]]}));
+CARS.forEach((c,k)=>RECIPES.push({out:c.id,n:1,in:[[I.IRON,5+(k>>1)],[B.GLASS,2],[I.GOLD,1],[I.COAL,1]]}));
 // ---- placeable street lights (multi-block structures)
 const pkId=n=>BLOCKS.findIndex(b=>b&&b.name===n);
 const SLIGHTS=[
@@ -3159,7 +3177,7 @@ const INV_TABS=[
   {id:'bucket',title:'Buckets',icon:1141,ids:[1140,1141]},
   {id:'weapons',title:'Knives, swords & spears',icon:1105,ids:WEAPON_IDS},
   {id:'boats',title:'Boats & speed boats',icon:BOATS[3].id,ids:BOATS.map(x=>x.id)},
-  {id:'vehicles',title:'Vehicles',icon:I.CAR,ids:[I.CAR,I.BIKE,I.PLANE,...HELIS.map(h=>h.id),...LINERS.map(h=>h.id)]},
+  {id:'vehicles',title:'Vehicles',icon:I.CAR,ids:[I.CAR,I.BIKE,...CARS.map(h=>h.id),I.PLANE,...HELIS.map(h=>h.id),...LINERS.map(h=>h.id)]},
   {id:'tools',title:'Tools & potions',icon:I.DIAMOND_PICK,ids:[I.WOOD_PICK,I.IRON_PICK,I.GOLD_PICK,I.DIAMOND_PICK,I.SPEED,I.JUMP,I.COMPASS]},
   {id:'treasure',title:'Treasures',icon:I.CROWN,ids:TREASURES},
 ];
@@ -3296,10 +3314,45 @@ function buildBike(col){
   vbox(.14,.14,.05,vm.head,0,1.0,-.9,g); vbox(.12,.1,.05,vm.tail,0,.9,1.28,g);
   o.eye=new THREE.Vector3(0,1.55,.6); return o;
 }
+
+// ---- parametric car models
+function buildAuto(col,k){
+  const sp=CARS[k%CARS.length], g=new THREE.Group(), o={g,wheels:[],front:[]}, body=new THREE.MeshLambertMaterial({color:sp.col});
+  const st=sp.stripe!==undefined?new THREE.MeshLambertMaterial({color:sp.stripe}):null, L=sp.L, W=sp.W, y0=sp.y0, th=sp.th, yc=y0+th/2;
+  vbox(W,th,L,body,0,yc,0,g);                                                              // chassis / body
+  if(st){ vbox(W+.02,th*.22,L*.98,st,0,yc,0,g); }
+  o.cabin=new THREE.Group(); g.add(o.cabin);
+  const top=y0+th, cz=sp.cz;
+  if(sp.f1){ vbox(.7,.45,1.0,body,0,top+.15,cz,o.cabin); vbox(.5,.3,.4,vm.dark,0,top+.45,cz+.1,o.cabin); vbox(W*1.1,.08,.7,body,0,y0+.12,-L/2-.1,g); vbox(W*1.05,.5,.1,body,0,y0+.9,L/2-.1,g); vbox(.1,.5,.1,body,.5,y0+.65,L/2-.1,g); vbox(.1,.5,.1,body,-.5,y0+.65,L/2-.1,g); vbox(.8,.2,L*.35,body,0,y0+.35,-L*.28,g); }
+  else if(sp.tractor){ vbox(.5,.5,1.6,body,0,top+.2,-1.0,g); vbox(.9,.12,.8,vm.dark,0,top+1.0,cz+.2,g); for(const x of [-.5,.5]) vbox(.08,1.0,.08,vm.dark,x,top+.5,cz-.2,o.cabin); vbox(1.3,.08,1.1,body,0,top+1.35,cz,o.cabin); vbox(.5,.6,.5,vm.seat,0,top+.3,cz+.4,g); vbox(.12,.9,.12,vm.dark,.4,top+.6,-1.55,g); }
+  else if(sp.box){ vbox(W-.1,sp.cl*.0+1.5,sp.cl,body,0,top+.75,cz+.4,o.cabin); vbox(W-.3,.7,.9,vm.glass,0,top+.7,-L/2+.8,g); vbox(W-.1,.55,1.0,body,0,top+.3,-L/2+.6,g); }
+  else if(sp.bus){ vbox(W-.1,1.5,L-.2,body,0,top+.75,0,o.cabin); if(st) vbox(W-.08,.2,L-.15,st,0,top+.9,0,o.cabin); for(let z=-L/2+1.4;z<L/2-.8;z+=1.0){ vbox(W-.02,.6,.7,vm.glass,0,top+.95,z,o.cabin); } vbox(W-.3,.8,.06,vm.glass,0,top+.8,-L/2+.02,o.cabin); vbox(W-.2,.2,.12,st,0,top+1.5,-L/2+.02,g); }
+  else if(sp.ladder){ vbox(W-.2,.5,1.3,body,0,top+.4,cz+.3,g); vbox(W-.5,1.0,1.6,vm.glass,0,top+.55,cz,o.cabin); vbox(W-.1,.7,3.2,vm.dark,0,top+.35,1.3,g); vbox(.35,.14,4.6,vm.rim,.4,top+.9,1.0,g); vbox(.35,.14,4.6,vm.rim,-.4,top+.9,1.0,g); for(let z=-.8;z<=3;z+=.6) vbox(.9,.06,.06,vm.rim,0,top+.9,z,g); vbox(W,.5,.9,body,0,top+.15,2.4,g); }
+  else if(sp.open){ vbox(.1,.7,.08,vm.dark,.82,top+.25,cz-.5,o.cabin); vbox(.1,.7,.08,vm.dark,-.82,top+.25,cz-.5,o.cabin); vbox(W-.1,.06,.08,vm.dark,0,top+.6,cz-.5,o.cabin); vbox(W-.3,.4,.4,vm.seat,0,top+.25,cz+.5,g); if(sp.spare){ const t=new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,.3,12),vm.tyre); t.rotation.x=Math.PI/2; t.position.set(0,y0+th*.7,L/2+.15); g.add(t); } }
+  else { const cl=sp.cl, cw=W-.2, ch=sp.chh;
+    vbox(cw,ch,cl,vm.glass,0,top+ch/2,cz,o.cabin); vbox(cw+.05,.08,cl+.1,body,0,top+ch+.04,cz,o.cabin);
+    for(const x of [-cw/2,cw/2]) for(const z of [cz-cl/2,cz+cl/2]) vbox(.1,ch,.1,body,x,top+ch/2,z,o.cabin);
+    vbox(cw,.3,.08,vm.seat,0,top+.2,cz+cl/2-.1,o.cabin);
+    if(sp.sign) vbox(.7,.22,.3,st,0,top+ch+.2,cz,o.cabin);
+    if(sp.rack){ for(const x of [-.7,.7]) vbox(.08,.08,cl,vm.dark,x,top+ch+.14,cz,o.cabin); }
+    if(sp.bed){ vbox(W,.06,2.0,vm.dark,0,top+.03,L/2-1.2,g); vbox(.08,.5,2.2,body,W/2,top+.25,L/2-1.2,g); vbox(.08,.5,2.2,body,-W/2,top+.25,L/2-1.2,g); vbox(W,.5,.08,body,0,top+.25,L/2-.1,g); }
+  }
+  if(sp.lights){ vbox(.9,.18,.3,new THREE.MeshBasicMaterial({color:0xff2a2a}),.3,top+(sp.ladder?1.0:sp.chh+.15),cz-.3,o.cabin); vbox(.9,.18,.3,new THREE.MeshBasicMaterial({color:0x2a6bff}),-.3,top+(sp.ladder?1.0:sp.chh+.15),cz-.3,o.cabin); }
+  if(sp.spoil){ vbox(W*.9,.08,.5,body,0,top+.45,L/2-.1,g); vbox(.08,.4,.2,vm.dark,.6,top+.25,L/2-.2,g); vbox(.08,.4,.2,vm.dark,-.6,top+.25,L/2-.2,g); }
+  if(sp.flame){ for(const x of [-.5,.5]) vbox(.12,.9,.12,vm.dark,x,top+.8,L/2-.4,g).rotation.x=0; }
+  vbox(.42,.2,.06,vm.head,W*.32,yc+.05,-L/2-.02,g); vbox(.42,.2,.06,vm.head,-W*.32,yc+.05,-L/2-.02,g);
+  vbox(.42,.2,.06,vm.tail,W*.32,yc+.05,L/2+.02,g); vbox(.42,.2,.06,vm.tail,-W*.32,yc+.05,L/2+.02,g);
+  const wr=sp.wr, ww=sp.wr>.8?.8:.34;
+  for(const [x,z,f] of [[1,-sp.wb,1],[-1,-sp.wb,1],[1,sp.wb,0],[-1,sp.wb,0]]){ const r=(!f&&sp.wr2)?sp.wr2:wr; const w=mkWheel(r,ww+(r>.8?.1:0),g,x*(W/2+(sp.wr>.8?.15:.0)),r,z); o.wheels.push(w); if(f) o.front.push(w); }
+  o.eye=new THREE.Vector3(-W*.2,top+(sp.bus||sp.box||sp.ladder?1.0:sp.f1?.55:sp.chh||.8)*.8+.1,cz-(sp.bus?L*.28:0)); return o;
+}
+const autoDefs={};
+function autoDef(c){ const k=((c||0)%CARS.length+CARS.length)%CARS.length, s=CARS[k]; return autoDefs[k]||(autoDefs[k]={max:s.max,accel:s.acc,rev:7,steer:s.str,rad:s.W/2+.2,len:s.L*.45,build:buildAuto,cam:s.L+3.5,camH:s.y0+s.th+.8,name:s.n,exit:s.W/2+1.4}); }
 const VDEF={ car:{max:24,accel:16,rev:7,steer:1.7,rad:1.05,len:1.9,build:buildCar,cam:6.5,camH:1.6,name:'Car'}, bike:{max:15,accel:12,rev:4,steer:2.4,rad:.5,len:.95,build:buildBike,cam:4.2,camH:1.5,name:'Bike'} };
+VDEF.auto=autoDef(0);
 let pendingStarters=null, vehicles=[], driving=null, vLookYaw=0, vLookPitch=0, vChase=true, vCamP=0.22, vHud=null, vPrompt=null;
 function addVehicle(t,x,y,z,yaw,c){
-  const d=t==='boat'?boatDef(c||0):t==='liner'?linerDef(c||0):VDEF[t], m=d.build(VCOL[(c||0)%VCOL.length],c||0); scene.add(m.g);
+  const d=t==='boat'?boatDef(c||0):t==='auto'?autoDef(c||0):t==='liner'?linerDef(c||0):VDEF[t], m=d.build(VCOL[(c||0)%VCOL.length],c||0); scene.add(m.g);
   const v={t,d,m,x,y,z,yaw:yaw||0,c:c||0,speed:0,vy:0,steer:0,pitch:0,roll:0,spin:0,wet:false,air:false,thr:0,pt:0,hx:0,hz:0,rot:0};
   m.g.rotation.order='YXZ'; m.g.position.set(x,y,z); m.g.rotation.y=v.yaw; vehicles.push(v); return v;
 }
@@ -3316,7 +3369,7 @@ function probes(v,x,z){
 function vehStep(v,dt,ctl){
   const d=v.d; if(!world.isLoaded(v.x,v.z)) return;
   const f=ctl?ctl.f:0, st=ctl?ctl.s:0;
-  let max=d.max*(ctl&&ctl.boost&&v.t==='car'?1.35:ctl&&ctl.boost?1.2:1); if(v.wet) max*=.45;
+  let max=d.max*(ctl&&ctl.boost&&(v.t==='car'||v.t==='auto')?1.35:ctl&&ctl.boost?1.2:1); if(v.wet) max*=.45;
   if(f>0){ v.speed+=d.accel*(1-Math.max(0,v.speed)/max)*dt*(v.speed<0?2.5:1); if(v.speed>max) v.speed-=6*dt; }
   else if(f<0){ if(v.speed>0.6) v.speed-=22*dt; else v.speed=Math.max(v.speed-d.accel*.6*dt,-d.max*(d.rev/d.max)); }
   else v.speed-=Math.sign(v.speed)*Math.min(Math.abs(v.speed),(2.2+Math.abs(v.speed)*.12)*dt);
@@ -3694,10 +3747,49 @@ function placeVehicle(id){
 }
 function pickupVeh(v){
   scene.remove(v.m.g); vehicles.splice(vehicles.indexOf(v),1);
-  if(!creative) addItem(v.t==='boat'?BOATS[v.c%BOATS.length].id:v.t==='liner'?LINERS[v.c%LINERS.length].id:v.t==='heli'?HELIS[v.c%10].id:{car:I.CAR,bike:I.BIKE,plane:I.PLANE}[v.t],1); markProgress(); ui.toast(v.d.name+' picked up');
+  if(!creative) addItem(v.t==='boat'?BOATS[v.c%BOATS.length].id:v.t==='liner'?LINERS[v.c%LINERS.length].id:v.t==='auto'?CARS[v.c%CARS.length].id:v.t==='heli'?HELIS[v.c%10].id:{car:I.CAR,bike:I.BIKE,plane:I.PLANE}[v.t],1); markProgress(); ui.toast(v.d.name+' picked up');
+}
+// ---- GPS for cars, planes, helicopters and boats: H sets HOME, B adds a STOP, N starts/stops the trip, J goes home, K clears stops, L hides the panel
+const GPS={home:null,stops:[],route:[],on:true,meshes:[],el:null,seq:0};
+try{ const j=JSON.parse(localStorage.getItem('vc_gps')||'null'); if(j){ GPS.home=j.home||null; GPS.stops=j.stops||[]; GPS.seq=j.seq||GPS.stops.length; } }catch(e){}
+function gpsSave(){ try{ localStorage.setItem('vc_gps',JSON.stringify({home:GPS.home,stops:GPS.stops,seq:GPS.seq})); }catch(e){} }
+function gpsBeacons(){
+  for(const m of GPS.meshes){ scene.remove(m); m.geometry.dispose(); m.material.dispose(); } GPS.meshes=[];
+  const mk=(p,col,r)=>{ const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,CH+80,10,1,true),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.38,depthWrite:false,side:THREE.DoubleSide})); m.position.set(p.x,(CH+80)/2-10,p.z); scene.add(m); GPS.meshes.push(m); };
+  if(GPS.home) mk(GPS.home,0x44e06a,.7);
+  GPS.stops.forEach((p,i)=>mk(p,GPS.route.length&&GPS.route[0]===p?0xffa726:0x4fc3f7,.5));
+}
+function gpsNext(){ return GPS.route.length?GPS.route[0]:null; }
+function gpsKey(code){
+  const v=driving; if(!v) return false;
+  if(code==='KeyH'){ GPS.home={x:Math.round(v.x),z:Math.round(v.z),n:'Home'}; gpsSave(); gpsBeacons(); ui.toast('GPS: home set here'); return true; }
+  if(code==='KeyB'){ if(GPS.stops.length>=12){ ui.toast('GPS: max 12 stops (K clears them)'); return true; } GPS.stops.push({x:Math.round(v.x),z:Math.round(v.z),n:'Stop '+(++GPS.seq)}); gpsSave(); gpsBeacons(); ui.toast('GPS: '+GPS.stops[GPS.stops.length-1].n+' added ('+GPS.stops.length+' on the route)'); return true; }
+  if(code==='KeyN'){ if(GPS.route.length){ GPS.route=[]; ui.toast('GPS: trip cancelled'); } else { GPS.route=[...GPS.stops]; if(GPS.home) GPS.route.push(GPS.home); if(!GPS.route.length) ui.toast('GPS: add stops with B or set home with H first'); else ui.toast('GPS: trip started - '+GPS.route.length+' leg'+(GPS.route.length>1?'s':'')); } gpsBeacons(); return true; }
+  if(code==='KeyJ'){ if(!GPS.home){ ui.toast('GPS: no home yet - press H where home is'); return true; } GPS.route=[GPS.home]; gpsBeacons(); ui.toast('GPS: heading home'); return true; }
+  if(code==='KeyK'){ GPS.stops=[]; GPS.route=GPS.route.filter(p=>p===GPS.home); GPS.seq=0; gpsSave(); gpsBeacons(); ui.toast('GPS: stops cleared'); return true; }
+  if(code==='KeyL'){ GPS.on=!GPS.on; ui.toast('GPS '+(GPS.on?'shown':'hidden')); return true; }
+  return false;
+}
+function gpsUI(v){
+  if(!GPS.el){ const e=document.createElement('div'); e.style.cssText='position:fixed;left:14px;bottom:90px;width:205px;background:rgba(0,0,0,.6);border:2px solid #1f6f43;padding:7px 10px;font:12px monospace;color:#d8ffe6;z-index:5;pointer-events:none;display:none'; document.body.appendChild(e); GPS.el=e; }
+  if(!GPS.built){ GPS.built=1; gpsBeacons(); }
+  const e=GPS.el; if(!v||!GPS.on){ e.style.display='none'; for(const m of GPS.meshes) m.visible=!!v; return; }
+  for(const m of GPS.meshes) m.visible=true;
+  let nx=gpsNext();
+  if(nx){ const d=Math.hypot(nx.x-v.x,nx.z-v.z), air=v.t==='plane'||v.t==='liner'||v.t==='heli', rad=air?(v.t==='liner'?40:18):7;
+    if(d<rad){ ui.toast('GPS: arrived at '+nx.n); GPS.route.shift(); gpsBeacons(); nx=gpsNext(); if(!nx) ui.toast('GPS: trip complete'); } }
+  let h='<b style="color:#6df0a0">GPS</b><div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>J go home · K clear stops · L hide</div>';
+  if(nx){ const dx=nx.x-v.x, dz=nx.z-v.z, d=Math.hypot(dx,dz), tb=Math.atan2(-dx,-dz); let rel=tb-v.yaw; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
+    const eta=d/Math.max(3,Math.abs(v.speed)), mm=Math.floor(eta/60), ss=Math.floor(eta%60);
+    h+='<div style="display:flex;align-items:center;gap:10px;margin:5px 0"><div style="font-size:30px;line-height:30px;transform:rotate('+(-rel)+'rad);color:#ffa726">&#10148;</div><div style="font-size:15px"><b>'+nx.n+'</b><br>'+(d>=1000?(d/1000).toFixed(1)+' km':Math.round(d)+' m')+' &middot; ETA '+mm+':'+String(ss).padStart(2,'0')+'</div></div>'; }
+  else h+='<div style="margin:4px 0;opacity:.8">No trip. Drive somewhere, press B to add a stop, H to set home, N to go.</div>';
+  const list=[...GPS.stops.map(p=>p), ...(GPS.home?[GPS.home]:[])];
+  if(list.length) h+=list.map(p=>(GPS.route[0]===p?'<span style="color:#ffa726">&#9654; ':'<span>&nbsp;&nbsp;')+p.n+(p===GPS.home?' &#127968;':'')+'</span>').join('<br>');
+  e.innerHTML=h; e.style.display='block';
 }
 function vehKey(code){
   if(state!=='playing') return;
+  if(gpsKey(code)) return;
   if(code==='KeyF'){ if(driving) exitVeh(); else { const v=nearestVeh(); if(v) enterVeh(v); } }
   else if(code==='KeyV'&&driving){ vChase=!vChase; ui.toast(vChase?'Chase camera':'Driver camera'); }
   else if(code==='KeyX'&&!driving){ const v=nearestVeh(); if(v) pickupVeh(v); }
@@ -3733,7 +3825,8 @@ function vehUI(dt){
     vPrompt=document.createElement('div'); vPrompt.style.cssText='position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:rgba(0,0,0,.6);padding:5px 12px;font:14px monospace;color:#fff;display:none;pointer-events:none;z-index:5;white-space:nowrap';
     document.body.append(vHud,vPrompt);
   }
-  if(state!=='playing'){ vHud.style.display=vPrompt.style.display='none'; return; }
+  if(state!=='playing'){ vHud.style.display=vPrompt.style.display='none'; gpsUI(null); return; }
+  gpsUI(driving);
   if(driving){ vHud.style.display='block'; const pl=driving.t==='plane'||driving.t==='liner', he=driving.t==='heli'; vHud.innerHTML=Math.round(Math.abs(driving.speed)*3.6)+' <small style="font-size:12px">km/h</small>'+(he?'<br>ALT '+Math.round(driving.y):'')+(pl?'<br>ALT '+Math.round(driving.y)+' <small style="font-size:12px">THR '+Math.round(driving.thr*100)+'%</small>'+(driving.speed<STALL+1&&driving.air?'<br><span style="color:#ff6b6b;font-size:14px">STALL</span>':''):'')+'<br><small style="font-size:11px;font-weight:400">'+(pl?'W/S throttle · mouse/↑↓ pitch · A/D bank · Space brake · V cam · F exit':he?'Space up · C/Z down · W/S move · A/D turn · V cam · F exit':driving.t==='boat'?'W/S throttle · A/D steer · Space brake · Shift boost · V cam · F exit':'F exit · V camera')+'</small>'; vPrompt.style.display='none'; }
   else { vHud.style.display='none'; const n=nearestVeh(); if(n){ vPrompt.style.display='block'; vPrompt.textContent='F  drive the '+n.d.name.toLowerCase()+'   ·   X  pick up'; } else vPrompt.style.display='none'; }
 }
