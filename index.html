@@ -2255,6 +2255,7 @@ class World {
   roadRects(rx,rz){ const o=[]; for(const l of this.roadLinks(rx,rz)) o.push(...l.rects); return o; }
   roadY(x,z){
     if(!this.ry) this.ry=new Map(); if(this.ry.size>60000) this.ry.clear(); const k=x+','+z, c=this.ry.get(k); if(c!==undefined) return c;
+    const st=this.settleAt(x,z); if(st&&Math.max(Math.abs(x-st.x),Math.abs(z-st.z))<=st.R+9){ const y=Math.max(SEA_LEVEL+1,this.groundH(x,z)); this.ry.set(k,y); return y; }
     let sum=this.groundH(x,z), n=1; for(let o=-8;o<=8;o+=4){ if(!o) continue; sum+=this.groundH(x+o,z)+this.groundH(x,z+o); n+=2; }
     const y=Math.max(SEA_LEVEL+1,Math.round(sum/n)); this.ry.set(k,y); return y;
   }
