@@ -1128,6 +1128,20 @@ const HELIS=[
   {n:'Luxury Helicopter',body:0x151518,acc:0xd4af37,style:'std',lux:1},{n:'Scout Helicopter',body:0x4fc3f7,acc:0xffffff,style:'bubble',small:1},
   {n:'Cargo Helicopter',body:0x546e7a,acc:0xeceff1,style:'tandem'},{n:'Gunship',body:0x2b2b30,acc:0xb71c1c,style:'army',pods:1,wings:1}];
 HELIS.forEach((h,k)=>{ h.id=215+k; ITEMS[h.id]={name:h.n,e:'🚁',vehicle:'heli',variant:k,desc:'right-click to place, F to fly: Space up, C/Z down, W/S forward/back, A/D turn'}; });
+// ---- airliners (flyable like the Airplane; ids 1230-1237)
+const LINERS=[
+  {n:'Regional Jet',L:20,R:2.6,span:22,ch:3.4,sw:.32,wz:1.5,gh:1.3,eng:[[2.7,.5,5.6],[-2.7,.5,5.6]],tail:'T',fin:4.2,body:0xf5f5f5,acc:0x1565c0,max:50,to:20,stall:13,acc2:.45,win:9,wr:.5},
+  {n:'Narrow-body Jet',L:30,R:3.4,span:34,ch:4.4,sw:.5,wz:1.5,gh:1.7,eng:[[-7,-1.3,-1.4],[7,-1.3,-1.4]],tail:'L',fin:6,body:0xf5f5f5,acc:0xd32f2f,max:60,to:23,stall:15,acc2:.28,win:14,wr:.52},
+  {n:'Wide-body Twinjet',L:44,R:5.2,span:52,ch:6.5,sw:.55,wz:2,gh:2.1,eng:[[-10,-1.8,-1.2],[10,-1.8,-1.2]],tail:'L',fin:8.5,body:0xf5f5f5,acc:0x00897b,max:66,to:26,stall:17,acc2:.17,win:20,wr:.55,big:1},
+  {n:'Jumbo Quad-jet',L:58,R:5.8,span:64,ch:8,sw:.58,wz:3,gh:2.4,eng:[[-9,-2,-2.5],[9,-2,-2.5],[-18,-2,.4],[18,-2,.4]],tail:'L',fin:10,body:0xf5f5f5,acc:0x6a1b9a,max:70,to:28,stall:18,acc2:.14,win:26,wr:.6,hump:1,big:1},
+  {n:'Cargo Freighter',L:48,R:5.4,span:54,ch:7,sw:.5,wz:2,gh:2.3,eng:[[-10,-1.9,-1.2],[10,-1.9,-1.2]],tail:'T',fin:9,body:0xe65100,acc:0x263238,max:62,to:26,stall:17,acc2:.15,win:0,wr:.55,hump:1,big:1,cargo:1},
+  {n:'Business Jet',L:15,R:2.1,span:15,ch:2.6,sw:.45,wz:1.2,gh:1.0,eng:[[2.1,.7,4.6],[-2.1,.7,4.6]],tail:'T',fin:3.4,body:0x212121,acc:0xd4af37,max:68,to:17,stall:11,acc2:.6,win:6,wr:.5},
+  {n:'Supersonic Delta',L:40,R:2.8,span:17,ch:22,sw:1.0,wz:4,gh:2.4,eng:[[-3.4,-.6,12],[3.4,-.6,12],[-1.6,-.6,12.5],[1.6,-.6,12.5]],tail:'F',fin:6,body:0xfafafa,acc:0x1a237e,max:96,to:30,stall:20,acc2:.5,win:12,wr:.28,delta:1,droop:1},
+  {n:'Turboprop Commuter',L:21,R:2.8,span:27,ch:3.6,sw:0,wz:0,gh:1.3,eng:[[-6.5,.2,-2.2],[6.5,.2,-2.2]],tail:'T',fin:4.5,body:0xf5f5f5,acc:0xef6c00,max:44,to:16,stall:11,acc2:.5,win:9,wr:.45,prop:1},
+  {n:'Nordic Airliner',L:44,R:5.2,span:52,ch:6.5,sw:.55,wz:2,gh:2.1,eng:[[-10,-1.8,-1.2],[10,-1.8,-1.2]],tail:'L',fin:8.5,body:0xdfe6ee,acc:0x37474f,max:66,to:26,stall:17,acc2:.17,win:20,wr:.55,big:1},
+  {n:'Budget Jet',L:30,R:3.4,span:34,ch:4.4,sw:.5,wz:1.5,gh:1.7,eng:[[-7,-1.3,-1.4],[7,-1.3,-1.4]],tail:'L',fin:6,body:0xfffde7,acc:0x7cb342,max:60,to:23,stall:15,acc2:.28,win:14,wr:.52},
+  {n:'Desert Super-jumbo',L:62,R:6,span:68,ch:8.5,sw:.58,wz:3,gh:2.5,eng:[[-9,-2,-2.5],[9,-2,-2.5],[-19,-2,.4],[19,-2,.4]],tail:'L',fin:10.5,body:0xf5f5f5,acc:0xd7b56d,max:72,to:29,stall:19,acc2:.13,win:28,wr:.6,hump:1,big:1}];
+LINERS.forEach((l,k)=>{ l.id=1230+k; ITEMS[l.id]={name:l.n,e:'🛫',vehicle:'liner',variant:k,desc:'right-click to place (needs space!), F to fly: hold W for throttle, accelerate down a flat runway, pull the mouse back to take off. A/D bank, Space brake, V camera'}; });
 
 LOOT.rare.push([HOUSES[1].id,1],[HOUSES[7].id,1],[HELIS[1].id,1]); LOOT.legendary.push([HOUSES[4].id,1],[HOUSES[26].id,1],[HELIS[9].id,1]);
 I.PLANE=61; ITEMS[I.PLANE]={name:'Airplane',e:'✈️',vehicle:'plane',desc:'right-click to place, F to fly: W/S throttle, mouse or arrows pitch, A/D bank, Space brake'};
@@ -1167,6 +1181,7 @@ const RECIPES = [
   DOORS.forEach((d,i)=>RECIPES.push({out:d.id,n:1,in:rc[i]})); }
 HOUSES.forEach(h=>RECIPES.push({out:h.id,n:1,in:houseCost(h)}));
 HELIS.forEach(h=>RECIPES.push({out:h.id,n:1,in:[[I.IRON,10],[B.GLASS,3],[I.GOLD,2],[I.COAL,2]]}));
+LINERS.forEach((l,k)=>RECIPES.push({out:l.id,n:1,in:[[I.IRON,12+k*3],[B.GLASS,4],[I.GOLD,2+(k>>1)],[I.COAL,3]]}));
 // ---- placeable street lights (multi-block structures)
 const pkId=n=>BLOCKS.findIndex(b=>b&&b.name===n);
 const SLIGHTS=[
@@ -3132,7 +3147,7 @@ const INV_TABS=[
   {id:'bucket',title:'Buckets',icon:1141,ids:[1140,1141]},
   {id:'weapons',title:'Knives, swords & spears',icon:1105,ids:WEAPON_IDS},
   {id:'boats',title:'Boats & speed boats',icon:BOATS[3].id,ids:BOATS.map(x=>x.id)},
-  {id:'vehicles',title:'Vehicles',icon:I.CAR,ids:[I.CAR,I.BIKE,I.PLANE,...HELIS.map(h=>h.id)]},
+  {id:'vehicles',title:'Vehicles',icon:I.CAR,ids:[I.CAR,I.BIKE,I.PLANE,...HELIS.map(h=>h.id),...LINERS.map(h=>h.id)]},
   {id:'tools',title:'Tools & potions',icon:I.DIAMOND_PICK,ids:[I.WOOD_PICK,I.IRON_PICK,I.GOLD_PICK,I.DIAMOND_PICK,I.SPEED,I.JUMP,I.COMPASS]},
   {id:'treasure',title:'Treasures',icon:I.CROWN,ids:TREASURES},
 ];
@@ -3272,7 +3287,7 @@ function buildBike(col){
 const VDEF={ car:{max:24,accel:16,rev:7,steer:1.7,rad:1.05,len:1.9,build:buildCar,cam:6.5,camH:1.6,name:'Car'}, bike:{max:15,accel:12,rev:4,steer:2.4,rad:.5,len:.95,build:buildBike,cam:4.2,camH:1.5,name:'Bike'} };
 let pendingStarters=null, vehicles=[], driving=null, vLookYaw=0, vLookPitch=0, vChase=true, vCamP=0.22, vHud=null, vPrompt=null;
 function addVehicle(t,x,y,z,yaw,c){
-  const d=t==='boat'?boatDef(c||0):VDEF[t], m=d.build(VCOL[(c||0)%VCOL.length],c||0); scene.add(m.g);
+  const d=t==='boat'?boatDef(c||0):t==='liner'?linerDef(c||0):VDEF[t], m=d.build(VCOL[(c||0)%VCOL.length],c||0); scene.add(m.g);
   const v={t,d,m,x,y,z,yaw:yaw||0,c:c||0,speed:0,vy:0,steer:0,pitch:0,roll:0,spin:0,wet:false,air:false,thr:0,pt:0,hx:0,hz:0,rot:0};
   m.g.rotation.order='YXZ'; m.g.position.set(x,y,z); m.g.rotation.y=v.yaw; vehicles.push(v); return v;
 }
@@ -3335,6 +3350,60 @@ function buildPlane(col){
 }
 VDEF.plane={max:34,accel:0,rev:0,steer:0,rad:1.0,len:2.4,build:buildPlane,cam:11,camH:2.4,name:'Airplane',exit:4.5};
 const STALL=11, TAKEOFF=15;
+// ---- airliner model
+function buildLiner(col,k){
+  const sp=LINERS[k%LINERS.length], g=new THREE.Group(), o={g,wheels:[],front:[],fans:[]};
+  const body=new THREE.MeshLambertMaterial({color:sp.body}), acc=new THREE.MeshLambertMaterial({color:sp.acc}), grey=new THREE.MeshLambertMaterial({color:0xb0b6bb});
+  const L=sp.L, R=sp.R, yb=sp.gh+R/2, ez=-L/2;
+  vbox(R,R,L*.72,body,0,yb,L*.02,g);                                              // main fuselage
+  vbox(R+.04,R*.32,L*.72,acc,0,yb-R*.34,L*.02,g);                                  // coloured belly band
+  vbox(R*.8,R*.8,L*.12,body,0,yb-R*(sp.droop?0:.04)-(sp.droop?R*.1:0),ez+L*.1,g);  // nose step 1
+  vbox(R*.55,R*.55,L*.1,body,0,yb-(sp.droop?R*.22:R*.1),ez+L*.045,g);                  // nose step 2
+  vbox(R*.2,R*.2,L*.03,vm.dark,0,yb-(sp.droop?R*.25:R*.12),ez-L*.005,g);
+  vbox(R*.75,R*.7,L*.2,body,0,yb+R*.05,L*.5-L*.08,g);                              // tail cone 1
+  vbox(R*.45,R*.5,L*.12,body,0,yb+R*.2,L*.5-L*.01,g);                              // tail cone 2
+  vbox(R*.8,R*.3,R*.7,vm.glass,0,yb+R*.28,ez+L*.145,g);                            // cockpit glass
+  if(sp.hump) vbox(R*.7,R*.38,L*(sp.cargo?.2:.3),body,0,yb+R*.62,ez+L*(sp.cargo?.16:.2),g);   // upper deck / freighter nose hump
+  if(sp.hump&&!sp.cargo) vbox(R*.72,R*.16,L*.1,vm.glass,0,yb+R*.68,ez+L*.1,g);
+  if(sp.win){ const n=sp.win; for(const sx of [-1,1]) for(let i=0;i<n;i++){ vbox(.06,R*.14,L*.026,vm.glass,sx*(R/2+.03),yb+R*.12,ez+L*.2+i*(L*.5/n),g); } }
+  else for(const sx of [-1,1]) vbox(.06,R*.5,L*.5,acc,sx*(R/2+.03),yb+R*.02,L*.05,g);   // cargo door stripe
+  // wings
+  const wy=yb-R*.34, rootX=R/2, half=sp.span/2-rootX, wl=Math.hypot(half,half*Math.tan(sp.sw));
+  for(const sx of [-1,1]){
+    const w=vbox(half/Math.cos(sp.sw)+.2,.22+sp.ch*.025,sp.ch*(sp.delta?1:1),body,0,0,0,g);
+    w.rotation.y=-sx*sp.sw; w.position.set(sx*(rootX+half/2),wy,sp.wz+Math.sin(sp.sw)*half/2);
+    const tip=vbox(.2,.8+sp.fin*.12,sp.ch*.35,acc,sx*(sp.span/2),wy+.4+sp.fin*.06,sp.wz+Math.tan(sp.sw)*half+sp.ch*.2,g);   // winglet
+    if(sp.delta){ w.position.z=sp.wz+Math.sin(sp.sw)*half/2+L*.1; tip.visible=false; }
+  }
+  // tail
+  const tz=L/2-L*.05;
+  const fh=sp.fin; vbox(.34,fh,sp.ch*.85,acc,0,yb+R*.4+fh/2,tz-1.0,g).rotation.x=0;
+  const tyH=sp.tail==='T'?yb+R*.4+fh:yb+R*.28, tw=sp.span*.34;
+  if(sp.tail!=='F') for(const sx of [-1,1]){ const t=vbox(tw/2/Math.cos(.3)+.1,.16,sp.ch*.55,body,0,0,0,g); t.rotation.y=-sx*.3; t.position.set(sx*(tw/4+(sp.tail==='T'?0:R*.3)),tyH,tz+.4+(sp.tail==='T'?-0.1:0)); }
+  // engines
+  for(const [ex,ey,ez0] of sp.eng){
+    const er=sp.prop?.7:(sp.big?1.6:sp.R>3?1.25:.85), len=er*(sp.prop?2.6:2.8);
+    const ey2=wy+ey+(ey>0?0:0), cy=new THREE.Mesh(new THREE.CylinderGeometry(er,er*.88,len,14),grey);
+    cy.rotation.x=Math.PI/2; cy.position.set(ex,ey>0?yb+ey:wy+ey,ez0+(sp.sw>0&&!sp.delta?Math.abs(ex)*Math.tan(sp.sw)*.6:0)); g.add(cy);
+    const lip=new THREE.Mesh(new THREE.CylinderGeometry(er*1.05,er*1.05,.25,14),acc); lip.rotation.x=Math.PI/2; lip.position.set(cy.position.x,cy.position.y,cy.position.z-len/2); g.add(lip);
+    const f=new THREE.Group(); f.position.set(cy.position.x,cy.position.y,cy.position.z-len/2-.2); g.add(f);
+    const bl=sp.prop?er*3.1:er*1.7; vbox(.14,bl,.06,vm.dark,0,0,0,f); vbox(bl,.14,.06,vm.dark,0,0,0,f);
+    if(!sp.prop){ vbox(er*1.5,er*1.5,.05,vm.dark,0,0,.08,f); const b=vbox(bl*.7,.1,.06,vm.rim,0,0,-.01,f); b.rotation.z=Math.PI/4; vbox(bl*.7,.1,.06,vm.rim,0,0,-.01,f).rotation.z=-Math.PI/4; }
+    o.fans.push(f);
+    if(ey<=0&&!sp.delta) vbox(.3,Math.abs(ey)-er*.4,len*.5,body,ex,wy+ey/2+er*.2,cy.position.z+.3,g);   // pylon
+  }
+  // landing gear
+  const gr=sp.big?.55:sp.R>3?.42:.32, gw=sp.big?.5:.35;
+  const gy=gr; vbox(.14,sp.gh-gr,.14,vm.dark,0,sp.gh/2+gr/2,ez+L*.16,g); mkWheel(gr,gw,g,-gr*.55,gy,ez+L*.16); mkWheel(gr,gw,g,gr*.55,gy,ez+L*.16);
+  const mz=sp.wz+Math.sin(sp.sw)*0+L*.07+(sp.delta?L*.17:0);
+  for(const sx of [-1,1]){ const x=sx*Math.min(R*.95,sp.span*.18); vbox(.18,sp.gh-gr,.18,vm.dark,x,sp.gh/2+gr/2,mz,g); for(const dz of (sp.big?[-1.2,0,1.2]:[-.5,.5])){ mkWheel(gr,gw,g,x-sx*gr*.0,gy,mz+dz); } }
+  o.eye=new THREE.Vector3(0,yb+R*.28,ez+L*.12); return o;
+}
+const linerDefs={};
+function linerDef(c){ const k=((c||0)%LINERS.length+LINERS.length)%LINERS.length, s=LINERS[k];
+  return linerDefs[k]||(linerDefs[k]={max:s.max,accel:0,rev:0,steer:0,rad:s.R*.9+.8,len:s.L*.32,build:buildLiner,cam:s.L*.9+10,camH:s.R+s.fin*.35,name:s.n,exit:s.R/2+3.5,to:s.to,stall:s.stall,acc2:s.acc2,nose:s.L*.55,wing:s.span/2+1,hb:s.gh+s.R*.45,tail:1}); }
+VDEF.liner=linerDef(0);
+
 function planeStep(v,dt,ctl){
   const d=v.d; if(!v.air&&!world.isLoaded(v.x,v.z)) return;
   const f=ctl?ctl.f:0, st=ctl?ctl.s:0;
@@ -3342,7 +3411,7 @@ function planeStep(v,dt,ctl){
   else { v.thr=Math.max(0,v.thr-0.5*dt); v.pt*=Math.exp(-1*dt); }
   const target=v.thr*d.max*(ctl&&ctl.boost?1.25:1);
   if(!v.air){
-    v.speed+=(target-v.speed)*0.5*dt; v.speed-=Math.sign(v.speed)*Math.min(Math.abs(v.speed),1.2*dt);
+    v.speed+=(target-v.speed)*(d.acc2||0.5)*dt; v.speed-=Math.sign(v.speed)*Math.min(Math.abs(v.speed),1.2*dt);
     if(ctl&&ctl.brake) v.speed*=Math.exp(-3*dt); if(v.wet) v.speed*=Math.exp(-1.0*dt);
     v.yaw-=st*0.9*clamp(v.speed/6,0,1)*dt*(v.speed<0?-1:1);
     const fx=-Math.sin(v.yaw), fz=-Math.cos(v.yaw), dx=fx*v.speed*dt, dz=fz*v.speed*dt;
@@ -3351,25 +3420,25 @@ function planeStep(v,dt,ctl){
     let G=-1e9; for(const p of probes(v,v.x,v.z)) G=Math.max(G,groundAt(p[0],p[1],v.y+0.3));
     v.wet=world.getBlock(Math.floor(v.x),Math.floor(G-0.2),Math.floor(v.z))===B.WATER||world.getBlock(Math.floor(v.x),Math.floor(G+0.1),Math.floor(v.z))===B.WATER;
     if(v.y>G+0.05){ v.vy=Math.max(v.vy-28*dt,-40); v.y+=v.vy*dt; if(v.y<G){ v.y=G; v.vy=0; } } else { v.y=Math.min(G,v.y+12*dt); if(v.y>=G-0.001) v.y=G; v.vy=0; }
-    v.pitch+=(((v.speed>TAKEOFF-3)?v.pt*0.55:0)-v.pitch)*(1-Math.exp(-5*dt)); v.roll+=(0-v.roll)*(1-Math.exp(-5*dt));
-    if(v.speed>TAKEOFF&&v.pt>0.12&&!v.wet&&ctl){ v.air=true; v.y+=0.3; }
+    v.pitch+=(((v.speed>(d.to||TAKEOFF)-3)?v.pt*0.55:0)-v.pitch)*(1-Math.exp(-5*dt)); v.roll+=(0-v.roll)*(1-Math.exp(-5*dt));
+    if(v.speed>(d.to||TAKEOFF)&&v.pt>0.12&&!v.wet&&ctl){ v.air=true; v.y+=0.3; }
   } else {
     v.pitch+=(v.pt-v.pitch)*(1-Math.exp(-2.5*dt));
-    let sink=0; if(v.speed<STALL){ sink=(STALL-v.speed)*1.3; v.pitch-=(STALL-v.speed)*0.05*dt*10; }
+    const ST=d.stall||STALL; let sink=0; if(v.speed<ST){ sink=(ST-v.speed)*1.3; v.pitch-=(ST-v.speed)*0.05*dt*10; }
     v.speed+=(target-v.speed)*0.35*dt-Math.sin(v.pitch)*14*dt; v.speed=Math.max(0,v.speed);
     const tr=ctl?-st*0.75:0; v.roll+=(tr-v.roll)*(1-Math.exp(-3*dt));
     v.yaw+=v.roll*1.15*clamp(v.speed/18,0.25,1)*dt;
     const cp=Math.cos(v.pitch), fx=-Math.sin(v.yaw)*cp, fy=Math.sin(v.pitch), fz=-Math.cos(v.yaw)*cp;
     const nx=v.x+fx*v.speed*dt, ny=Math.min(180,v.y+(fy*v.speed-sink)*dt), nz=v.z+fz*v.speed*dt;
     const rx=Math.cos(v.yaw), rz=-Math.sin(v.yaw), S=id=>isSolid(world.getBlock(Math.floor(id[0]),Math.floor(id[1]),Math.floor(id[2])));
-    const hit=S([nx,ny+.9,nz])||S([nx+fx*3,ny+.9+fy*3,nz+fz*3])||S([nx+rx*4,ny+.9,nz+rz*4])||S([nx-rx*4,ny+.9,nz-rz*4]);
+    const hb=d.hb||.9, nz3=d.nose||3, wg=d.wing||4, hit=S([nx,ny+hb,nz])||S([nx+fx*nz3,ny+hb+fy*nz3,nz+fz*nz3])||S([nx+rx*wg,ny+hb,nz+rz*wg])||S([nx-rx*wg,ny+hb,nz-rz*wg]);
     if(hit){ v.speed*=0.35; v.pt=Math.min(v.pt,0); v.vy=0; v.y+=0.1; if(ctl) ui.toast('Crash! Pull up earlier'); }
     else { v.x=nx; v.y=ny; v.z=nz; }
     const G=groundAt(v.x,v.z,v.y+0.5);
     if(v.y<=G+0.02){ v.y=G; v.air=false; v.vy=0; v.speed*=(fy*v.speed<-9?0.5:0.9); v.pitch=0; v.pt=0; v.roll=0; }
   }
   v.spin+=(v.thr*55+v.speed)*dt*1.0;
-  const m=v.m; m.g.position.set(v.x,v.y,v.z); m.g.rotation.set(v.pitch,v.yaw,v.roll); m.prop.rotation.z=v.spin;
+  const m=v.m; m.g.position.set(v.x,v.y,v.z); m.g.rotation.set(v.pitch,v.yaw,v.roll); if(m.prop) m.prop.rotation.z=v.spin; if(m.fans) for(const f of m.fans) f.rotation.z=v.spin;
 }
 function buildHeli(col,k){
   const sp=HELIS[k%HELIS.length], s=sp.small?0.78:1, g=new THREE.Group(), o={g,wheels:[],front:[]};
@@ -3581,18 +3650,18 @@ function placeBoat(id){
   addVehicle('boat',x,y+.15,z,player.yaw,it.variant);
   if(!creative){ inv[id]--; ui.renderHotbar(); } markProgress(); updateStats(); ui.toast(it.name+' launched — press F near it to drive');
 }
-function vstep(v,dt,ctl){ if(v.t==='boat') boatStep(v,dt,ctl); else if(v.t==='plane') planeStep(v,dt,ctl); else if(v.t==='heli') heliStep(v,dt,ctl); else vehStep(v,dt,ctl); }
+function vstep(v,dt,ctl){ if(v.t==='boat') boatStep(v,dt,ctl); else if(v.t==='plane'||v.t==='liner') planeStep(v,dt,ctl); else if(v.t==='heli') heliStep(v,dt,ctl); else vehStep(v,dt,ctl); }
 function nearestVeh(maxD){
-  let best=null,bd=1e9; for(const v of vehicles){ const dd=Math.hypot(v.x-player.pos.x,v.z-player.pos.z), lim=Math.max(maxD||4.5,v.t==='boat'?(v.d.len+v.d.rad+1.5):0); if(dd<lim&&dd<bd&&Math.abs(v.y-player.pos.y)<3.5){ bd=dd; best=v; } } return best;
+  let best=null,bd=1e9; for(const v of vehicles){ const dd=Math.hypot(v.x-player.pos.x,v.z-player.pos.z), lim=Math.max(maxD||4.5,v.t==='boat'?(v.d.len+v.d.rad+1.5):v.t==='liner'?(v.d.exit+v.d.len*.8):0); if(dd<lim&&dd<bd&&Math.abs(v.y-player.pos.y)<3.5){ bd=dd; best=v; } } return best;
 }
 function enterVeh(v){
   driving=v; vLookYaw=vLookPitch=0; player.flying=false; player.vel.set(0,0,0); input.mdx=input.mdy=0;
   target=null; hlMesh.visible=false; crackMesh.visible=false;
-  ui.toast(v.t==='heli'?'Helicopter: spin-up takes a moment. Space up, C/Z down, W/S forward/back, A/D turn, Shift boost':v.t==='plane'?'Airplane: hold W for throttle, roll to ~15 km/h then pull the mouse back to take off. A/D bank, V camera':'Driving '+v.d.name+' — W/S gas+brake, A/D steer, Space handbrake, Shift boost, V camera, F exit');
+  ui.toast(v.t==='heli'?'Helicopter: spin-up takes a moment. Space up, C/Z down, W/S forward/back, A/D turn, Shift boost':(v.t==='plane'||v.t==='liner')?'Airplane: hold W for throttle, roll to ~15 km/h then pull the mouse back to take off. A/D bank, V camera':'Driving '+v.d.name+' — W/S gas+brake, A/D steer, Space handbrake, Shift boost, V camera, F exit');
 }
 function exitVeh(){
   const v=driving; if(!v) return;
-  if((v.t==='plane'||v.t==='heli')&&v.air){ ui.toast(v.t==='heli'?'Land first! (hold C or Z to descend)':'Land first! (ease off the throttle and glide down)'); return; }
+  if((v.t==='plane'||v.t==='liner'||v.t==='heli')&&v.air){ ui.toast(v.t==='heli'?'Land first! (hold C or Z to descend)':'Land first! (ease off the throttle and glide down)'); return; }
   driving=null; v.speed=0; v.thr=0;
   const s=Math.sin(v.yaw), c=Math.cos(v.yaw), R=v.d.exit||(v.d.rad+0.9);
   const cand=[[c*R,-s*R],[-c*R,s*R],[s*R,c*R],[-s*R*1.5,-c*R*1.5],[0,0]];
@@ -3613,7 +3682,7 @@ function placeVehicle(id){
 }
 function pickupVeh(v){
   scene.remove(v.m.g); vehicles.splice(vehicles.indexOf(v),1);
-  if(!creative) addItem(v.t==='boat'?BOATS[v.c%BOATS.length].id:v.t==='heli'?HELIS[v.c%10].id:{car:I.CAR,bike:I.BIKE,plane:I.PLANE}[v.t],1); markProgress(); ui.toast(v.d.name+' picked up');
+  if(!creative) addItem(v.t==='boat'?BOATS[v.c%BOATS.length].id:v.t==='liner'?LINERS[v.c%LINERS.length].id:v.t==='heli'?HELIS[v.c%10].id:{car:I.CAR,bike:I.BIKE,plane:I.PLANE}[v.t],1); markProgress(); ui.toast(v.d.name+' picked up');
 }
 function vehKey(code){
   if(state!=='playing') return;
@@ -3624,7 +3693,7 @@ function vehKey(code){
 function driveFrame(dt){
   const v=driving, k=key=>input.key(key);
   vLookYaw-=input.mdx*MOUSE_SENS; vLookYaw+=((k('ArrowLeft')?1:0)-(k('ArrowRight')?1:0))*dt*2;
-  let dp=0; const plane=v.t==='plane';
+  let dp=0; const plane=v.t==='plane'||v.t==='liner';
   if(plane){ dp=-input.mdy*MOUSE_SENS*1.3+((k('ArrowUp')?1:0)-(k('ArrowDown')?1:0))*dt*1.0; }
   else if(vChase){ vCamP=clamp(vCamP+input.mdy*MOUSE_SENS,-0.15,1.2); } else vLookPitch=clamp(vLookPitch-input.mdy*MOUSE_SENS,-1.2,1.2);
   const moved=Math.abs(input.mdx)>0.5||k('ArrowLeft')||k('ArrowRight'); input.mdx=input.mdy=0;
@@ -3635,14 +3704,14 @@ function driveFrame(dt){
 function driveCam(){
   const v=driving, m=v.m, e=new THREE.Vector3();
   if(vChase){
-    const cy=v.yaw+vLookYaw, cp=(v.t==='plane'?clamp(vCamP-v.pitch*0.5,-0.4,1.2):vCamP), dist=v.d.cam;
+    const cy=v.yaw+vLookYaw, cp=((v.t==='plane'||v.t==='liner')?clamp(vCamP-v.pitch*0.5,-0.4,1.2):vCamP), dist=v.d.cam;
     const tgt=new THREE.Vector3(v.x,v.y+v.d.camH,v.z), dir=new THREE.Vector3(Math.sin(cy)*Math.cos(cp),Math.sin(cp),Math.cos(cy)*Math.cos(cp));
     let dd=dist; for(let t=0.6;t<=dist;t+=0.4){ const p=tgt.clone().addScaledVector(dir,t); if(isSolid(world.getBlock(Math.floor(p.x),Math.floor(p.y),Math.floor(p.z)))){ dd=Math.max(0.6,t-0.5); break; } }
     e.copy(tgt).addScaledVector(dir,dd); camera.position.copy(e); camera.rotation.set(-cp,cy,0);
     if(m.cabin) m.cabin.visible=true;
   } else {
     m.g.updateMatrixWorld(); e.copy(m.g.localToWorld(m.eye.clone())); camera.position.copy(e);
-    camera.rotation.set(vLookPitch+(v.t==='plane'?v.pitch:0),v.yaw+vLookYaw,v.t==='plane'?v.roll*0.8:0); if(m.cabin) m.cabin.visible=false;
+    camera.rotation.set(vLookPitch+((v.t==='plane'||v.t==='liner')?v.pitch:0),v.yaw+vLookYaw,(v.t==='plane'||v.t==='liner')?v.roll*0.8:0); if(m.cabin) m.cabin.visible=false;
   }
   return e;
 }
@@ -3653,7 +3722,7 @@ function vehUI(dt){
     document.body.append(vHud,vPrompt);
   }
   if(state!=='playing'){ vHud.style.display=vPrompt.style.display='none'; return; }
-  if(driving){ vHud.style.display='block'; const pl=driving.t==='plane', he=driving.t==='heli'; vHud.innerHTML=Math.round(Math.abs(driving.speed)*3.6)+' <small style="font-size:12px">km/h</small>'+(he?'<br>ALT '+Math.round(driving.y):'')+(pl?'<br>ALT '+Math.round(driving.y)+' <small style="font-size:12px">THR '+Math.round(driving.thr*100)+'%</small>'+(driving.speed<STALL+1&&driving.air?'<br><span style="color:#ff6b6b;font-size:14px">STALL</span>':''):'')+'<br><small style="font-size:11px;font-weight:400">'+(pl?'W/S throttle · mouse/↑↓ pitch · A/D bank · Space brake · V cam · F exit':he?'Space up · C/Z down · W/S move · A/D turn · V cam · F exit':driving.t==='boat'?'W/S throttle · A/D steer · Space brake · Shift boost · V cam · F exit':'F exit · V camera')+'</small>'; vPrompt.style.display='none'; }
+  if(driving){ vHud.style.display='block'; const pl=driving.t==='plane'||driving.t==='liner', he=driving.t==='heli'; vHud.innerHTML=Math.round(Math.abs(driving.speed)*3.6)+' <small style="font-size:12px">km/h</small>'+(he?'<br>ALT '+Math.round(driving.y):'')+(pl?'<br>ALT '+Math.round(driving.y)+' <small style="font-size:12px">THR '+Math.round(driving.thr*100)+'%</small>'+(driving.speed<STALL+1&&driving.air?'<br><span style="color:#ff6b6b;font-size:14px">STALL</span>':''):'')+'<br><small style="font-size:11px;font-weight:400">'+(pl?'W/S throttle · mouse/↑↓ pitch · A/D bank · Space brake · V cam · F exit':he?'Space up · C/Z down · W/S move · A/D turn · V cam · F exit':driving.t==='boat'?'W/S throttle · A/D steer · Space brake · Shift boost · V cam · F exit':'F exit · V camera')+'</small>'; vPrompt.style.display='none'; }
   else { vHud.style.display='none'; const n=nearestVeh(); if(n){ vPrompt.style.display='block'; vPrompt.textContent='F  drive the '+n.d.name.toLowerCase()+'   ·   X  pick up'; } else vPrompt.style.display='none'; }
 }
 function clearSpot(cx,cz,gy,skip,sep,rmax,hs){
