@@ -3832,7 +3832,7 @@ function gpsUI(v){
   for(const m of GPS.meshes) m.visible=true;
   let nx=gpsNext();
   if(nx){ const d=Math.hypot(nx.x-v.x,nx.z-v.z), air=v.t==='plane'||v.t==='liner'||v.t==='heli', rad=air?(v.t==='liner'?40:18):7;
-    if(d<(nx.via?(air?30:9):rad)){ if(!nx.via) ui.toast('GPS: arrived at '+nx.n); GPS.route.shift(); if(!nx.via){ gpsBeacons(); } nx=gpsNext(); if(!nx) ui.toast('GPS: trip complete'); } }
+    if(d<(nx.via?(air?30:9):rad)&&!(AP.on&&apFly(v))){ if(!nx.via) ui.toast('GPS: arrived at '+nx.n); GPS.route.shift(); if(!nx.via){ gpsBeacons(); } nx=gpsNext(); if(!nx) ui.toast('GPS: trip complete'); } }
   let h='<b style="color:#6df0a0">GPS</b>'+(AP.on?' <b style="color:#ffeb3b">&#9679; AUTOPILOT</b>':'')+'<div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>Y best route · O autopilot · J home<br>K clear stops · U clear home<br>L hide · M map</div>';
   if(nx){ const dx=nx.x-v.x, dz=nx.z-v.z, d=Math.hypot(dx,dz), tb=Math.atan2(-dx,-dz); let rel=tb-v.yaw; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
     const eta=d/Math.max(3,Math.abs(v.speed)), mm=Math.floor(eta/60), ss=Math.floor(eta%60);
@@ -3977,14 +3977,16 @@ function vehKey(code){
 
 // ---- AUTOPILOT (O): cars, bikes and boats follow the GPS route by themselves; touching W/A/S/D/Space gives control back
 const AP={on:false,stuck:0,rev:0,revDir:1};
-function apKind(v){ return v&&(v.t==='car'||v.t==='auto'||v.t==='bike'||v.t==='boat'); }
+function apKind(v){ return v&&(v.t==='car'||v.t==='auto'||v.t==='bike'||v.t==='boat'||v.t==='plane'||v.t==='liner'||v.t==='heli'); }
+function apAir(v){ return v&&(v.t==='plane'||v.t==='liner'); }
+function apFly(v){ return apAir(v)||(v&&v.t==='heli'); }
 function apToggle(){
   const v=driving; if(!v) return;
-  if(!apKind(v)){ ui.toast('Autopilot works in cars, bikes and boats'); return; }
+  if(!apKind(v)){ ui.toast('Autopilot works in cars, bikes, boats, airplanes and helicopters'); return; }
   if(AP.on){ AP.on=false; ui.toast('Autopilot off'); return; }
   if(!GPS.route.length){ const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(t.length) gpsPlan(t,true); }
   if(!GPS.route.length){ ui.toast('Autopilot: pick a destination first (M = map, tap a spot, Go here)'); return; }
-  AP.on=true; AP.stuck=0; AP.rev=0; ui.toast('Autopilot ON - W/A/S/D or Space takes over, O turns it off');
+  AP.on=true; AP.stuck=0; AP.rev=0; AP.ph=0; ui.toast(v.t==='heli'?'Autopilot ON - lifts off, flies the route and lands at the last pin. Keys or O take over':apAir(v)?'Autopilot ON - takes off, flies the route and lands at the last pin (pick flat ground). Mouse/keys or O take over':'Autopilot ON - W/A/S/D or Space takes over, O turns it off');
 }
 function apCtl(v,dt){
   const nx=GPS.route[0]; if(!nx){ AP.on=false; ui.toast('Autopilot: arrived'); return {f:0,s:0,brake:true}; }
@@ -4004,6 +4006,58 @@ function apCtl(v,dt){
   if(want>3&&Math.abs(v.speed)<0.8){ AP.stuck+=dt; if(AP.stuck>1.3){ AP.rev=1.2; AP.stuck=0; AP.revDir=Math.random()<.5?1:-1; } } else AP.stuck=Math.max(0,AP.stuck-dt*2);
   return {f,s,brake};
 }
+
+function apPlane(v,dt){
+  const d=v.d, nx=GPS.route[0], toS=d.to||TAKEOFF, stS=d.stall||STALL, CR=85;
+  if(!nx){ AP.on=false; ui.toast('Autopilot: no route'); return {f:0,s:0,dp:0,brake:true}; }
+  const dx=nx.x-v.x, dz=nx.z-v.z, dist=Math.hypot(dx,dz), tb=Math.atan2(-dx,-dz);
+  const rel=Math.atan2(Math.sin(tb-v.yaw),Math.cos(tb-v.yaw));
+  const lastLeg=!GPS.route.some((q,i)=>i>0&&!q.via), G=groundAt(v.x,v.z,v.y+2), agl=v.y-G;
+  let f=0, s=-clamp(rel*1.6,-1,1), dp=0, brake=false;
+  const pitchTo=des=>{ des=clamp(des,-.3,.4); dp=clamp((des-v.pt)*2.6*dt,-.05,.05)||0.0001; };
+  const thrTo=t=>{ f=v.thr<t-.03?1:v.thr>t+.03?-1:0; };
+  if(!v.air){
+    if(AP.land){   // rolling out after touchdown
+      brake=true; f=-1; s=0; if(Math.abs(v.speed)<1.2){ AP.on=false; AP.land=false; GPS.route=[]; gpsBeacons(); ui.toast('Autopilot: landed'); }
+      return {f,s,dp:0,brake};
+    }
+    // line up (slow roll) then full power and rotate
+    if(Math.abs(rel)>.4&&v.speed<9){ thrTo(.3); } else { thrTo(1); s=Math.abs(v.speed)<toS*.5?s*.4:0; }
+    if(v.speed>toS+2) pitchTo(.28); else dp=0;
+    return {f,s,dp,brake:false};
+  }
+  // airborne
+  AP.land=false;
+  const finalApproach=lastLeg&&dist<Math.max(120,(agl)*9+v.speed*4);
+  if(finalApproach){
+    // glide down: steeper when high, flare near the ground, hold a safe speed
+    let des=-clamp(agl/Math.max(dist,35),.03,.2); if(agl<7) des=agl<2.5?-.05:-.03; pitchTo(des);
+    thrTo(v.speed>stS+8?.05:.55); if(agl<3){ thrTo(0); } AP.land=agl<30;
+    if(v.speed<stS+2) pitchTo(0);
+    s=-clamp(rel*1.6,-1,1); if(dist<70&&Math.abs(rel)>.7) s=0;
+  } else {
+    const maxUp=clamp((v.speed-stS-3)*.035,-.05,.22); pitchTo(Math.min((CR-v.y)*.014,maxUp)); if(v.speed<stS+3) pitchTo(-.02);
+    thrTo(.9);
+  }
+  if(!finalApproach&&!nx.via&&dist<(v.t==='liner'?40:18)&&!lastLeg){ ui.toast('GPS: passed '+nx.n); GPS.route.shift(); gpsBeacons(); }
+  return {f,s,dp,brake};
+}
+
+function apHeli(v,dt){
+  const nx=GPS.route[0]; if(!nx){ AP.on=false; return {f:0,s:0,brake:false,down:false}; }
+  const dx=nx.x-v.x, dz=nx.z-v.z, dist=Math.hypot(dx,dz), tb=Math.atan2(-dx,-dz), rel=Math.atan2(Math.sin(tb-v.yaw),Math.cos(tb-v.yaw));
+  const lastLeg=!GPS.route.some((q,i)=>i>0&&!q.via), G=groundAt(v.x,v.z,v.y+2), agl=v.y-G, CR=Math.max(72,G+30);
+  let f=0, s=-clamp(rel*2,-1,1), up=0;
+  if(v.rot<.7) return {f:0,s:0,brake:false,down:false};                      // spin-up
+  const landing=lastLeg&&dist<14;
+  let wantY=landing?G:CR;
+  if(!landing&&v.y<CR-35&&dist>20) f=0; else f=clamp(dist/50,.2,1)*clamp(1-Math.abs(rel)/.9,0,1);   // climb first, then fly
+  if(landing){ f=clamp(dist/20,0,.4)*clamp(1-Math.abs(rel)/.9,0,1); if(dist<3) f=0; wantY=dist<5?G-1:G+8; }
+  if(v.y<wantY-1.5) up=1; else if(v.y>wantY+1.5) up=-1;
+  if(!nx.via&&!lastLeg&&dist<18){ ui.toast('GPS: passed '+nx.n); GPS.route.shift(); gpsBeacons(); }
+  if(landing&&!v.air&&dist<8){ AP.on=false; GPS.route=[]; gpsBeacons(); ui.toast('Autopilot: landed'); return {f:0,s:0,brake:false,down:true}; }
+  return {f,s,brake:up>0,down:up<0};
+}
 function driveFrame(dt){
   const v=driving, k=key=>input.key(key);
   vLookYaw-=input.mdx*MOUSE_SENS; vLookYaw+=((k('ArrowLeft')?1:0)-(k('ArrowRight')?1:0))*dt*2;
@@ -4013,8 +4067,11 @@ function driveFrame(dt){
   const moved=Math.abs(input.mdx)>0.5||k('ArrowLeft')||k('ArrowRight'); input.mdx=input.mdy=0;
   if(!moved) vLookYaw*=Math.exp(-2.2*dt);
   const manual=k('KeyW')||k('KeyS')||k('KeyA')||k('KeyD')||k('Space');
-  if(AP.on&&(manual||!apKind(v))){ AP.on=false; ui.toast('Autopilot off - you are driving'); }
-  if(AP.on){ const c=apCtl(v,dt); vstep(v,dt,{f:c.f,s:c.s,brake:c.brake,boost:false,dp:0,down:false}); }
+  const pilotIn=apFly(v)&&(manual||k('KeyC')||k('KeyZ')||(apAir(v)&&(Math.abs(dp)>.004||k('ArrowUp')||k('ArrowDown'))));
+  if(AP.on&&((!apFly(v)&&manual)||pilotIn||!apKind(v))){ AP.on=false; ui.toast('Autopilot off - you are flying'); }
+  if(AP.on&&apAir(v)){ const c=apPlane(v,dt); vstep(v,dt,{f:c.f,s:c.s,brake:c.brake,boost:false,dp:c.dp,down:false}); }
+  else if(AP.on&&v.t==='heli'){ const c=apHeli(v,dt); vstep(v,dt,{f:c.f,s:c.s,brake:c.brake,boost:false,dp:0,down:c.down}); }
+  else if(AP.on){ const c=apCtl(v,dt); vstep(v,dt,{f:c.f,s:c.s,brake:c.brake,boost:false,dp:0,down:false}); }
   else vstep(v,dt,{f:(k('KeyW')?1:0)-(k('KeyS')?1:0), s:(k('KeyD')?1:0)-(k('KeyA')?1:0), brake:k('Space'), boost:k('ShiftLeft')||k('ShiftRight'), dp, down:k('KeyC')||k('KeyZ')});
   player.pos.set(v.x,v.y,v.z); player.vel.set(0,0,0); player.yaw=v.yaw+vLookYaw; player.pitch=0;
 }
