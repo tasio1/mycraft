@@ -2441,13 +2441,25 @@ class World {
     this.rcc.set(key,out); return out;
   }
   roadRects(rx,rz){ const o=[]; for(const l of this.roadLinks(rx,rz)) o.push(...l.rects); return o; }
+  // height profile of one road link: follows the land, but never steeper than 1 block per block (so cars can drive it), and meets both towns at their ground level
+  roadProf(L){
+    if(L.prof) return L.prof; const len=Math.ceil(L.cum[L.cum.length-1]), n=len+1, t=new Float64Array(n), at=sv=>{ let k=1; while(k<L.pts.length-1&&sv>L.cum[k]) k++; const [ax,az]=L.pts[k-1], [bx,bz]=L.pts[k], f=Math.max(0,Math.min(1,(sv-L.cum[k-1])/Math.max(1,L.cum[k]-L.cum[k-1]))); return [ax+(bx-ax)*f,az+(bz-az)*f]; };
+    const g=new Float64Array(n); for(let i=0;i<n;i++){ const [x,z]=at(i); g[i]=this.groundH(Math.round(x),Math.round(z)); }
+    for(let i=0;i<n;i++){ let sum=0,c=0; for(let o=-14;o<=14;o++){ const j=i+o; if(j<0||j>=n) continue; sum+=g[j]; c++; } t[i]=sum/c; }
+    const p=Array.from(t,v=>Math.max(SEA_LEVEL+1,Math.round(v)));
+    for(let i=1;i<n;i++) p[i]=Math.max(p[i-1]-1,Math.min(p[i-1]+1,p[i]));
+    for(let i=n-2;i>=0;i--) p[i]=Math.max(p[i+1]-1,Math.min(p[i+1]+1,p[i]));
+    const u=L.u, v=L.v, inT=(i,T)=>{ const [x,z]=at(i); return Math.max(Math.abs(x-T.x),Math.abs(z-T.z))<=T.R+2; }; let su=0, sv=len; while(su<len&&inT(su+1,u)) su++; while(sv>0&&inT(sv-1,v)) sv--;                 // anchors: town ground level at the town edges
+    for(let i=0;i<n;i++){ const lo=Math.max(u.y0-Math.abs(i-su),v.y0-Math.abs(i-sv)), hi=Math.min(u.y0+Math.abs(i-su),v.y0+Math.abs(i-sv)); if(lo<=hi) p[i]=Math.max(lo,Math.min(hi,p[i])); if(i<=su) p[i]=u.y0; if(i>=sv) p[i]=v.y0; }
+    L.prof=p; return p;
+  }
   roadY(x,z){
     if(!this.ry) this.ry=new Map(); if(this.ry.size>60000) this.ry.clear(); const k=x+','+z, c=this.ry.get(k); if(c!==undefined) return c;
-    const st=this.settleAt(x,z), dd=st?Math.max(Math.abs(x-st.x),Math.abs(z-st.z))-st.R:99;
-    let y; if(dd<=9) y=this.groundH(x,z);
-    else { let sum=this.groundH(x,z), n=1; for(let o=-20;o<=20;o+=4){ if(!o) continue; sum+=this.groundH(x+o,z)+this.groundH(x,z+o); n+=2; } y=sum/n;
-      if(dd<30){ const t=(dd-9)/21; y=this.groundH(x,z)*(1-t)+y*t; } }
-    y=Math.max(SEA_LEVEL+1,Math.round(y)); this.ry.set(k,y); return y;
+    let best=null; const rx=Math.floor(x/192), rz=Math.floor(z/192);
+    for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++) for(const L of this.roadLinks(rx+a,rz+b)) for(let q=0;q<L.rects.length;q++){ const r=L.rects[q]; if(x<r.x0||x>r.x1||z<r.z0||z>r.z1) continue;
+      const off=r.ax===0?Math.abs(z-r.c):Math.abs(x-r.c); if(!best||off<best.off){ const pt=L.pts[q]; best={off,L,s:L.cum[q]+(r.ax===0?Math.abs(x-pt[0]):Math.abs(z-pt[1]))}; } }
+    let y; if(best){ const P=this.roadProf(best.L); y=P[Math.max(0,Math.min(P.length-1,Math.round(best.s)))]; } else y=Math.max(SEA_LEVEL+1,this.groundH(x,z));
+    this.ry.set(k,y); return y;
   }
   inSettle(x,z){ const s=this.settleAt(x,z); return !!s&&Math.max(Math.abs(x-s.x),Math.abs(z-s.z))<=s.R+10; }
   settlePlan(s){
