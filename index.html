@@ -2443,9 +2443,11 @@ class World {
   roadRects(rx,rz){ const o=[]; for(const l of this.roadLinks(rx,rz)) o.push(...l.rects); return o; }
   roadY(x,z){
     if(!this.ry) this.ry=new Map(); if(this.ry.size>60000) this.ry.clear(); const k=x+','+z, c=this.ry.get(k); if(c!==undefined) return c;
-    const st=this.settleAt(x,z); if(st&&Math.max(Math.abs(x-st.x),Math.abs(z-st.z))<=st.R+9){ const y=Math.max(SEA_LEVEL+1,this.groundH(x,z)); this.ry.set(k,y); return y; }
-    let sum=this.groundH(x,z), n=1; for(let o=-20;o<=20;o+=4){ if(!o) continue; sum+=this.groundH(x+o,z)+this.groundH(x,z+o); n+=2; }
-    const y=Math.max(SEA_LEVEL+1,Math.round(sum/n)); this.ry.set(k,y); return y;
+    const st=this.settleAt(x,z), dd=st?Math.max(Math.abs(x-st.x),Math.abs(z-st.z))-st.R:99;
+    let y; if(dd<=9) y=this.groundH(x,z);
+    else { let sum=this.groundH(x,z), n=1; for(let o=-20;o<=20;o+=4){ if(!o) continue; sum+=this.groundH(x+o,z)+this.groundH(x,z+o); n+=2; } y=sum/n;
+      if(dd<30){ const t=(dd-9)/21; y=this.groundH(x,z)*(1-t)+y*t; } }
+    y=Math.max(SEA_LEVEL+1,Math.round(y)); this.ry.set(k,y); return y;
   }
   inSettle(x,z){ const s=this.settleAt(x,z); return !!s&&Math.max(Math.abs(x-s.x),Math.abs(z-s.z))<=s.R+10; }
   settlePlan(s){
@@ -2488,7 +2490,7 @@ class World {
   placeSettlements(ch,hs){
     const cx=ch.cx, cz=ch.cz, d=ch.data, X0=cx*CS, Z0=cz*CS, rx=Math.floor(cx/12), rz=Math.floor(cz/12); let busy=false;
     const hit=(x0,z0,x1,z1,m)=>!(x1+(m||0)<X0||x0-(m||0)>X0+15||z1+(m||0)<Z0||z0-(m||0)>Z0+15);
-    const own=this.settle(rx,rz), inFoot=(x,z)=>{ for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){ const t=this.settle(rx+a,rz+b); if(t&&Math.max(Math.abs(x-t.x),Math.abs(z-t.z))<=t.R+1) return true; } return false; };
+    const own=this.settle(rx,rz), inFoot=(x,z)=>{ for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){ const t=this.settle(rx+a,rz+b); if(t&&Math.max(Math.abs(x-t.x),Math.abs(z-t.z))<=t.R-3) return true; } return false; };
     const clearTop=(x,z,y)=>{ for(let yy=y+1;yy<=Math.min(CH-1,y+9);yy++){ const i=yy*256+z*CS+x, b=d[i]; if(b===B.LOG||b===B.LEAVES) d[i]=B.AIR; } };
     // -- rural roads (skipped inside settlement footprints; those have their own streets)
     for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){ for(const r of this.roadRects(rx+a,rz+b)){ if(!hit(r.x0,r.z0,r.x1,r.z1,1)) continue; busy=true;
