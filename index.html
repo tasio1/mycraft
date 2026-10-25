@@ -2414,7 +2414,7 @@ class World {
     if(r>0.18||forced){
       for(let t=0;t<6&&!s;t++){
         const px=rx*192+64+Math.floor(this.hash(rx*31+t*5+1,rz*17+3)*64), pz=rz*192+64+Math.floor(this.hash(rx*13+7,rz*29+t*3+9)*64);
-        for(const type of (r>0.84&&!forced?[1,0]:[0])){
+        for(const type of (r>0.74&&!forced?[1,0]:[0])){
           const R=type?36:28; let mn=99,mx=-99,sum=0,n=0,wetN=0;
           for(let a=-2;a<=2;a++)for(let b=-2;b<=2;b++){ const h=this.heightAt(px+Math.round(a*R/2),pz+Math.round(b*R/2)); if(h<=SEA_LEVEL+1){ wetN++; continue; } mn=Math.min(mn,h); mx=Math.max(mx,h); sum+=h; n++; }
           if(wetN>(type?3:5)||n<12||mx-mn>(type?8:11)) continue; const y0=Math.max(SEA_LEVEL+2,Math.round(sum/n)); if(type&&y0>CH-30) continue;
@@ -2424,7 +2424,29 @@ class World {
     }
     this.sc.set(key,s); return s;
   }
+  /* ---- AIRPORTS: every big city may have one beside it (runway along x, apron + terminal on the +z side) ---- */
+  airportFor(rx,rz){
+    if(!this.apc) this.apc=new Map(); const key=rx+','+rz; if(this.apc.has(key)) return this.apc.get(key);
+    let out=null; const c=this.settle(rx,rz);
+    if(c&&c.type){ const HL=95, order=Math.floor(this.hash(rx*17+3,rz*23+5)*4);
+      for(let t=0;t<4&&!out;t++){ const k=(order+t)%4, jit=Math.floor((this.hash(rx*5+k,rz*9+1)-.5)*20); let ax,az;
+        if(k===0){ ax=c.x+c.R+12+HL+8; az=c.z+jit; } else if(k===1){ ax=c.x-(c.R+12+HL+8); az=c.z+jit; } else if(k===2){ ax=c.x+jit; az=c.z+c.R+26; } else { ax=c.x+jit; az=c.z-c.R-46; }
+        const X0=ax-HL-8, X1=ax+HL+8, Z0=az-14, Z1=az+34; let ok=true;
+        for(let a=-2;a<=2&&ok;a++)for(let b=-2;b<=2&&ok;b++){ const o=this.settle(rx+a,rz+b); if(!o||o===c) continue; if(!(X1<o.x-o.R-12||X0>o.x+o.R+12||Z1<o.z-o.R-12||Z0>o.z+o.R+12)) ok=false; }
+        if(!ok) continue; let mn=99,mx=-99,sum=0,n=0;
+        for(let x=X0;x<=X1&&ok;x+=12)for(let z=Z0;z<=Z1;z+=12){ const h=this.heightAt(x,z); if(h<=SEA_LEVEL+1){ ok=false; break; } mn=Math.min(mn,h); mx=Math.max(mx,h); sum+=h; n++; }
+        if(!ok||mx-mn>8) continue; const y0=Math.max(SEA_LEVEL+2,Math.round(sum/n)); if(y0>CH-30) continue;
+        out={rx,rz,ax,az,HL,y0,X0,X1,Z0,Z1,n:c.n+' Airport'}; }
+    }
+    this.apc.set(key,out); return out;
+  }
+  apNear(rx,rz){
+    if(!this.apn) this.apn=new Map(); const key=rx+','+rz; let l=this.apn.get(key); if(l) return l; l=[];
+    for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){ const o=this.airportFor(rx+a,rz+b); if(o) l.push(o); } this.apn.set(key,l); return l;
+  }
   groundH(x,z){
+    const al=this.apNear(Math.floor(x/192),Math.floor(z/192));
+    if(al.length) for(const a of al){ const dd=Math.max(a.X0-x,x-a.X1,a.Z0-z,z-a.Z1); if(dd<=0) return a.y0; if(dd<9){ const h0=this.heightAt(x,z); return Math.round(a.y0+(h0-a.y0)*dd/9); } }
     const h=this.heightAt(x,z), s=this.settleAt(x,z); if(!s) return h;
     const dd=Math.max(Math.abs(x-s.x),Math.abs(z-s.z)); if(dd<=s.R+1) return s.y0; if(dd>=s.R+9) return h;
     const t=(dd-s.R-1)/8; return Math.round(s.y0+(h-s.y0)*t);
@@ -2460,6 +2482,32 @@ class World {
       const off=r.ax===0?Math.abs(z-r.c):Math.abs(x-r.c); if(!best||off<best.off){ const pt=L.pts[q]; best={off,L,s:L.cum[q]+(r.ax===0?Math.abs(x-pt[0]):Math.abs(z-pt[1]))}; } }
     let y; if(best){ const P=this.roadProf(best.L); y=P[Math.max(0,Math.min(P.length-1,Math.round(best.s)))]; } else y=Math.max(SEA_LEVEL+1,this.groundH(x,z));
     this.ry.set(k,y); return y;
+  }
+  placeAirports(ch,hs){
+    const d=ch.data, X0c=ch.cx*CS, Z0c=ch.cz*CS; let busy=false;
+    for(const a of this.apNear(Math.floor(ch.cx/12),Math.floor(ch.cz/12))){
+      if(a.X1<X0c||a.X0>X0c+15||a.Z1<Z0c||a.Z0>Z0c+15) continue; busy=true; const y0=a.y0, {ax,az,HL}=a;
+      const put=(wx,y,wz,id)=>{ const x=wx-X0c, z=wz-Z0c; if(x<0||z<0||x>=CS||z>=CS||y<1||y>=CH) return; d[y*256+z*CS+x]=id; };
+      for(let z=Math.max(a.Z0,Z0c);z<=Math.min(a.Z1,Z0c+15);z++)for(let x=Math.max(a.X0,X0c);x<=Math.min(a.X1,X0c+15);x++){
+        const ci=(z-Z0c)*CS+(x-X0c); for(let yy=y0+1;yy<=Math.min(CH-1,y0+30);yy++) d[yy*256+ci]=B.AIR; for(let yy=Math.max(1,y0-3);yy<y0;yy++) if(d[yy*256+ci]===B.AIR||d[yy*256+ci]===B.WATER) d[yy*256+ci]=B.DIRT; d[y0*256+ci]=B.GRASS; hs[ci]=y0;
+        const dx=x-ax, dz=z-az, adx=Math.abs(dx), adz=Math.abs(dz); let id=0;
+        if(adx<=HL&&adz<=6){ id=B.ASPHALT; if(adz===0&&((dx%8)+8)%8<4&&adx<HL-10) id=B.ROAD_LINE; else if(adz===5&&adx<HL-1) id=B.WOOL_WHITE; else if(adx>=HL-9&&adx<=HL-2&&adz<=4&&adz%2===0) id=B.WOOL_WHITE; }
+        else if(dz>=7&&dz<=22&&adx<=48) id=(dz===14&&adx<=44&&((dx%6)+6)%6<3)?B.ROAD_LINE:B.ASPHALT;
+        else if(dz>=7&&dz<=12&&adx<=HL-10&&adx>48&&adx%1===0&&(adx<=70)) id=B.ASPHALT;
+        else if(adz===8&&adx<=HL&&((dx%8)+8)%8===0&&dz<0) id=B.LAMP;
+        if(id) d[y0*256+ci]=id; }
+      // terminal (dz 23..33, x +-30): glass front, stone walls, white flat roof
+      for(let dz=23;dz<=33;dz++)for(let dx=-30;dx<=30;dx++){ const wx=ax+dx, wz=az+dz; const edge=dz===23||dz===33||dx===-30||dx===30;
+        put(wx,y0,wz,B.STONE_BRICKS);
+        for(let h=1;h<=5;h++){ let id=B.AIR; if(edge){ id=B.STONE_BRICKS; if(dz===23&&h>=2&&h<=4&&((dx+30)%6)!==0) id=B.GLASS; if(dz===23&&dx>=-1&&dx<=1&&h<=3) id=B.AIR; } put(wx,y0+h,wz,id); }
+        put(wx,y0+6,wz,(edge||(dx%10===0&&dz%5===0))?B.WOOL_WHITE:B.WOOL_WHITE); }
+      for(let dx=-30;dx<=30;dx+=10) put(ax+dx,y0+4,az+28,B.LAMP);
+      // control tower
+      for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){ for(let h=1;h<=13;h++) put(ax+38+dx,y0+h,az+27+dz,(dx===0&&dz===0)?B.AIR:B.IRON_BLOCK); }
+      for(let dz=-3;dz<=3;dz++)for(let dx=-3;dx<=3;dx++){ put(ax+38+dx,y0+14,az+27+dz,B.WOOL_WHITE); for(let h=15;h<=16;h++) put(ax+38+dx,y0+h,az+27+dz,(Math.max(Math.abs(dx),Math.abs(dz))===3)?B.GLASS:B.AIR); put(ax+38+dx,y0+17,az+27+dz,B.WOOL_WHITE); }
+      put(ax+38,y0+18,az+27,B.IRON_BLOCK); put(ax+38,y0+19,az+27,B.IRON_BLOCK); put(ax+38,y0+20,az+27,B.LAMP);
+    }
+    return busy;
   }
   inSettle(x,z){ const s=this.settleAt(x,z); return !!s&&Math.max(Math.abs(x-s.x),Math.abs(z-s.z))<=s.R+10; }
   settlePlan(s){
@@ -2596,6 +2644,7 @@ class World {
       const wx=cx*CS+lx, wz=cz*CS+lz, hh=this.hash(wx,wz);
       if(hh>TREE_CHANCE*3.4) continue;
       if(this.inSettle(wx,wz)) continue;
+      { const al=this.apNear(Math.floor(wx/192),Math.floor(wz/192)); let near=false; for(const a of al) if(wx>=a.X0-8&&wx<=a.X1+8&&wz>=a.Z0-8&&wz<=a.Z1+8){ near=true; break; } if(near) continue; }
       const inside=lx>=0&&lx<CS&&lz>=0&&lz<CS;
       const gh=inside?hs[lz*CS+lx]:this.groundH(wx,wz);
       const t=nz.fbm(wx*.0016+77,wz*.0016-40,2), m=nz.fbm(wx*.002-160,wz*.002+210,2), f=nz.fbm(wx*.01+333,wz*.01+17,2);
@@ -2631,7 +2680,7 @@ class World {
         else if(r<.0795){ const cl=['carrotP','potatoP','onionP','garlicP','lettuceP','broccoliP','beansP','cornP','peanutP','spotP']; id=NAT[cl[Math.floor(r2*cl.length)]]; } }
       if(id) d[(gh+1)*256+ci]=id;
     }
-    this.carveMines(ch,d); const busyT=this.placeSettlements(ch,hs); if(!busyT) this.placeHouses(ch,hs); this.placeTreasures(ch,hs);
+    this.carveMines(ch,d); const busyT=this.placeSettlements(ch,hs); const busyA=this.placeAirports(ch,hs); if(!busyT&&!busyA) this.placeHouses(ch,hs); this.placeTreasures(ch,hs);
     // apply persisted player edits
     const m=this.mods.get(cx+','+cz);
     if(m) for(const [i,id] of m) d[i]=id;
@@ -4220,12 +4269,19 @@ function gpsRoadVia(sx,sz,tx,tz){
   pts.push([X.x,X.z]);
   return {pts,len:best<1e17?best+E.d+X.d:direct+E.d+X.d};
 }
+function aptTarget(a){ return {x:a.ax,z:a.az,n:a.n,apt:{ax:a.ax,az:a.az,HL:a.HL,y0:a.y0}}; }
+function nearestAirport(x,z){ let best=null,bd=1e18; const rx=Math.floor(x/192), rz=Math.floor(z/192); for(let a=-6;a<=6;a++)for(let b=-6;b<=6;b++){ const o=world.airportFor(rx+a,rz+b); if(!o) continue; const d=Math.hypot(o.ax-x,o.az-z); if(d<bd){ bd=d; best=o; } } return best; }
 function gpsPlan(targets,best){   // builds GPS.route from real targets; best=true also finds the shortest order
   const v=driving, me={x:v?v.x:player.pos.x,z:v?v.z:player.pos.z}, kind=gpsKind();
   if(!targets.length){ GPS.route=[]; gpsBeacons(); return; }
   const list=best&&targets.length>1?gpsOrder(me,targets,GPS.home&&targets[targets.length-1]===GPS.home):targets;
   const route=[]; let cur=[me.x,me.z], total=0, miss=0;
-  for(const T of list){ let via=gpsPath(kind,cur[0],cur[1],T.x,T.z);
+  for(let T of list){ let via=null, aptFix=null;
+    if(T.apt&&kind==='air'){ const a=T.apt, xw=a.ax-a.HL, xe=a.ax+a.HL, fW=[xw-860,a.az], fE=[xe+860,a.az];
+      const east=Math.hypot(fW[0]-cur[0],fW[1]-cur[1])<=Math.hypot(fE[0]-cur[0],fE[1]-cur[1]);   // land heading east from the west end, or west from the east end
+      aptFix=east?fW:fE; T=Object.assign({},T,{x:east?xw+60:xe-60,z:a.az,land:true}); via=[aptFix,[east?xw-560:xe+560,a.az]]; }
+    else if(T.apt&&kind==='ground') T=Object.assign({},T,{x:T.apt.ax,z:T.apt.az+18});
+    if(via===null) via=gpsPath(kind,cur[0],cur[1],T.x,T.z);
     if(kind==='ground'){ const rv=gpsRoadVia(cur[0],cur[1],T.x,T.z); if(rv){ let dl=Infinity; if(via!==null){ dl=0; let c=cur; for(const q of via){ dl+=Math.hypot(q[0]-c[0],q[1]-c[1]); c=q; } dl+=Math.hypot(T.x-c[0],T.z-c[1]); }
         if(via===null||rv.len<=dl*1.6){ const a1=gpsPath(kind,cur[0],cur[1],rv.pts[0][0],rv.pts[0][1])||[], a2=gpsPath(kind,rv.pts[rv.pts.length-1][0],rv.pts[rv.pts.length-1][1],T.x,T.z)||[];
           const dense=[]; let pc=cur; for(const q of [...a1,...rv.pts,...a2]){ const dd=Math.hypot(q[0]-pc[0],q[1]-pc[1]), n=Math.max(1,Math.floor(dd/50)); for(let i=1;i<=n;i++) dense.push([pc[0]+(q[0]-pc[0])*i/n,pc[1]+(q[1]-pc[1])*i/n]); pc=q; } via=dense; } } }
@@ -4242,6 +4298,7 @@ function gpsKey(code){
   if(code==='KeyB'){ if(GPS.stops.length>=12){ ui.toast('GPS: max 12 stops (K clears them)'); return true; } GPS.stops.push({x:Math.round(v.x),z:Math.round(v.z),n:'Stop '+(++GPS.seq)}); gpsSave(); gpsBeacons(); ui.toast('GPS: '+GPS.stops[GPS.stops.length-1].n+' added ('+GPS.stops.length+' on the route)'); return true; }
   if(code==='KeyN'){ if(GPS.route.length){ GPS.route=[]; ui.toast('GPS: trip cancelled'); } else { const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(!t.length) ui.toast('GPS: add stops with B or set home with H first'); else gpsPlan(t,false); } gpsBeacons(); return true; }
   if(code==='KeyY'){ const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(!t.length) ui.toast('GPS: add stops with B (and home with H) first'); else gpsPlan(t,true); return true; }
+  if(code==='KeyI'){ const a=nearestAirport(v.x,v.z); if(!a){ ui.toast('GPS: no airport nearby yet - explore near big cities'); return true; } gpsPlan([aptTarget(a)],false); if(gpsKind()==='air') ui.toast('GPS: landing at '+a.n+' - press O for autopilot'); return true; }
   if(code==='KeyJ'){ if(!GPS.home){ ui.toast('GPS: no home yet - press H where home is'); return true; } gpsPlan([GPS.home],false); return true; }
   if(code==='KeyK'){ GPS.stops=[]; GPS.route=GPS.route.filter(p=>p===GPS.home||(p.via&&false)); GPS.seq=0; gpsSave(); gpsBeacons(); ui.toast('GPS: stops cleared'); return true; }
   if(code==='KeyU'){ if(!GPS.home){ ui.toast('GPS: no home set'); return true; } GPS.route=GPS.route.filter(q=>q!==GPS.home); GPS.home=null; gpsSave(); gpsBeacons(); ui.toast('GPS: home cleared'); return true; }
@@ -4257,7 +4314,7 @@ function gpsUI(v){
   let nx=gpsNext();
   if(nx){ const d=Math.hypot(nx.x-v.x,nx.z-v.z), air=v.t==='plane'||v.t==='liner'||v.t==='heli', rad=air?(v.t==='liner'?40:18):7;
     if(d<(nx.via?(air?30:9):rad)&&!(AP.on&&apFly(v))){ if(!nx.via) ui.toast('GPS: arrived at '+nx.n); GPS.route.shift(); if(!nx.via){ gpsBeacons(); } nx=gpsNext(); if(!nx) ui.toast('GPS: trip complete'); } }
-  let h='<b style="color:#6df0a0">GPS</b>'+(AP.on?' <b style="color:#ffeb3b">&#9679; AUTOPILOT</b>':'')+'<div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>Y best route · O autopilot · J home<br>K clear stops · U clear home<br>L hide · M map</div>';
+  let h='<b style="color:#6df0a0">GPS</b>'+(AP.on?' <b style="color:#ffeb3b">&#9679; AUTOPILOT</b>':'')+'<div style="opacity:.6;font-size:10px;line-height:12px">H home · B add stop · N trip on/off<br>Y best route · O autopilot · J home<br>I nearest airport · K clear stops · U clear home<br>L hide · M map</div>';
   if(nx){ const dx=nx.x-v.x, dz=nx.z-v.z, d=Math.hypot(dx,dz), tb=Math.atan2(-dx,-dz); let rel=tb-v.yaw; rel=Math.atan2(Math.sin(rel),Math.cos(rel));
     const eta=d/Math.max(3,Math.abs(v.speed)), mm=Math.floor(eta/60), ss=Math.floor(eta%60);
     h+='<div style="display:flex;align-items:center;gap:10px;margin:5px 0"><div style="font-size:30px;line-height:30px;transform:rotate('+(-rel)+'rad);color:#ffa726">&#10148;</div><div style="font-size:15px"><b>'+(GPS.route.find(q=>!q.via)||nx).n+'</b><br>'+(()=>{ let t=0,c=[v.x,v.z]; for(const q of GPS.route){ t+=Math.hypot(q.x-c[0],q.z-c[1]); c=[q.x,q.z]; } return t>=1000?(t/1000).toFixed(1)+' km':Math.round(t)+' m'; })()+' &middot; ETA '+mm+':'+String(ss).padStart(2,'0')+'</div></div>'; }
@@ -4333,7 +4390,11 @@ function gmDraw(cv,ctx,cx,cz,bpp,showPins,big){
       ctx.restore();
       for(let rx=r0;rx<=r1;rx++)for(let rz=q0;rz<=q1;rz++){ const t=world.settle(rx,rz); if(!t) continue; const x=sx(t.x), y=sz(t.z), rr=Math.max(4,t.R/bpp);
         ctx.save(); ctx.fillStyle=t.type?'rgba(120,120,135,.85)':'rgba(205,160,95,.85)'; ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.fillRect(x-rr,y-rr,rr*2,rr*2); ctx.strokeRect(x-rr,y-rr,rr*2,rr*2);
-        if(t.type?bpp<=16:bpp<=4){ ctx.font='bold '+(big?12:9)+'px sans-serif'; ctx.textAlign='center'; ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.7)'; ctx.fillStyle='#fff'; ctx.strokeText(t.n,x,y-rr-4); ctx.fillText(t.n,x,y-rr-4); } ctx.restore(); } } }
+        if(t.type?bpp<=16:bpp<=4){ ctx.font='bold '+(big?12:9)+'px sans-serif'; ctx.textAlign='center'; ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.7)'; ctx.fillStyle='#fff'; ctx.strokeText(t.n,x,y-rr-4); ctx.fillText(t.n,x,y-rr-4); } ctx.restore(); }
+      for(let rx=r0;rx<=r1;rx++)for(let rz=q0;rz<=q1;rz++){ const a=world.airportFor(rx,rz); if(!a) continue; const x0=sx(a.X0), x1=sx(a.X1), y=sz(a.az), w=Math.max(3,13/bpp);
+        ctx.save(); ctx.fillStyle='rgba(60,64,72,.95)'; ctx.fillRect(sx(a.ax-a.HL),y-w/2,sx(a.ax+a.HL)-sx(a.ax-a.HL),w); ctx.fillStyle='rgba(225,225,230,.9)'; ctx.fillRect(sx(a.ax-30),sz(a.az+23),Math.max(2,60/bpp),Math.max(2,10/bpp));
+        const ic=Math.max(10,Math.min(big?20:14,60/bpp)); ctx.font=ic+'px sans-serif'; ctx.textAlign='center'; ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.75)'; ctx.fillStyle='#fff'; ctx.strokeText('\u2708',sx(a.ax),y-w-2); ctx.fillText('\u2708',sx(a.ax),y-w-2);
+        if(bpp<=16){ ctx.font='bold '+(big?11:8)+'px sans-serif'; ctx.strokeText(a.n,sx(a.ax),y+w+ic*.9+6); ctx.fillText(a.n,sx(a.ax),y+w+ic*.9+6); } ctx.restore(); } } }
   // route line
   const pts=[]; if(GPS.route.length){ pts.push([driving?driving.x:player.pos.x,driving?driving.z:player.pos.z]); for(const q of GPS.route) pts.push([q.x,q.z]); }
   if(pts.length>1){ ctx.save(); ctx.strokeStyle='rgba(30,120,255,.9)'; ctx.lineWidth=big?5:3; ctx.setLineDash([10,7]); ctx.beginPath(); pts.forEach((q,i)=>{ const x=sx(q[0]), y=sz(q[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); ctx.restore(); }
@@ -4357,8 +4418,9 @@ function gmBuild(){
   cv.onpointerup=e=>{ const g=GMAP.drag; GMAP.drag=null; if(!g||g.m>5) return; const r=px(), k=GMAP.cv.width/r.width, bpp=gmBpp();
     const wx=GMAP.cx+((e.clientX-r.left)*k-GMAP.cv.width/2)*bpp, wz=GMAP.cz+((e.clientY-r.top)*k-GMAP.cv.height/2)*bpp;
     let hit=null, hd=1e9; const all=[...GPS.stops,...(GPS.home?[GPS.home]:[])]; for(const q of all){ const d=Math.hypot(q.x-wx,q.z-wz)/bpp; if(d<22*k&&d<hd){ hd=d; hit=q; } }
-    let town=null; if(!hit){ const t=world.settleAt(wx,wz); if(t&&Math.max(Math.abs(wx-t.x),Math.abs(wz-t.z))<=Math.max(t.R,12*bpp)) town=t; }
-    GMAP.sel=hit?{x:hit.x,z:hit.z,pin:hit}:town?{x:town.x,z:town.z,town}:{x:Math.round(wx),z:Math.round(wz)}; gmRender(); };
+    let apt=null; if(!hit){ const rx=Math.floor(wx/192), rz=Math.floor(wz/192); for(let a=-1;a<=1&&!apt;a++)for(let b=-1;b<=1;b++){ const o=world.airportFor(rx+a,rz+b); if(o&&wx>=o.X0-10*bpp&&wx<=o.X1+10*bpp&&wz>=o.Z0-10*bpp&&wz<=o.Z1+10*bpp){ apt=o; break; } } }
+    let town=null; if(!hit&&!apt){ const t=world.settleAt(wx,wz); if(t&&Math.max(Math.abs(wx-t.x),Math.abs(wz-t.z))<=Math.max(t.R,12*bpp)) town=t; }
+    GMAP.sel=hit?{x:hit.x,z:hit.z,pin:hit}:apt?{x:apt.ax,z:apt.az,apt}:town?{x:town.x,z:town.z,town}:{x:Math.round(wx),z:Math.round(wz)}; gmRender(); };
   cv.addEventListener('wheel',e=>{ e.preventDefault(); gmZoom(e.deltaY<0?1:-1); },{passive:false});
   $('gmz1').onclick=()=>gmZoom(1); $('gmz0').onclick=()=>gmZoom(-1); $('gmme').onclick=()=>{ const m=driving||player.pos; GMAP.cx=m.x; GMAP.cz=m.z; gmRender(); };
   $('gmx').onclick=closeMap;
@@ -4373,11 +4435,11 @@ function gmRender(){
   const co=GMAP.callout, sel=GMAP.sel;
   if(sel){ const k=r.width/cv.width, x=((sel.x-GMAP.cx)/bpp+W/2)*k, y=((sel.z-GMAP.cz)/bpp+H/2)*k; co.style.display='block'; co.style.left=Math.max(80,Math.min(r.width-80,x))+'px'; co.style.top=Math.max(90,y-42)+'px';
     const me=driving||{x:player.pos.x,z:player.pos.z}, dist=Math.round(Math.hypot(sel.x-me.x,sel.z-me.z));
-    const ttl=sel.pin?sel.pin.n:sel.town?sel.town.n+(sel.town.type?' (city)':' (village)'):'Dropped pin';
+    const ttl=sel.pin?sel.pin.n:sel.apt?'\u2708 '+sel.apt.n:sel.town?sel.town.n+(sel.town.type?' (city)':' (village)'):'Dropped pin';
     co.innerHTML='<b style="font-size:13px">'+ttl+'</b><br>x '+sel.x+', z '+sel.z+'<br>'+dist+' m from you<br>'+(sel.pin?'<button class="g" id="gmgo">Go here</button><button class="r" id="gmrm">Remove</button>':'<button class="g" id="gmgo">Go here</button><button id="gmst">Add stop</button><button id="gmhm">Set home</button>');
-    const go=$('gmgo'); if(go) go.onclick=()=>{ gpsPlan([sel.pin||{x:sel.x,z:sel.z,n:sel.town?sel.town.n:'Pinned spot'}],false); GMAP.sel=null; gmRender(); };
+    const go=$('gmgo'); if(go) go.onclick=()=>{ gpsPlan([sel.pin||(sel.apt?aptTarget(sel.apt):{x:sel.x,z:sel.z,n:sel.town?sel.town.n:'Pinned spot'})],false); GMAP.sel=null; gmRender(); };
     const rm=$('gmrm'); if(rm) rm.onclick=()=>{ const q=sel.pin; if(q===GPS.home) GPS.home=null; else GPS.stops=GPS.stops.filter(z=>z!==q); GPS.route=GPS.route.filter(z=>z!==q); gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
-    const st=$('gmst'); if(st) st.onclick=()=>{ if(GPS.stops.length>=12){ ui.toast('GPS: max 12 stops'); return; } GPS.stops.push({x:sel.x,z:sel.z,n:sel.town?sel.town.n:'Stop '+(++GPS.seq)}); GPS.seq++; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
+    const st=$('gmst'); if(st) st.onclick=()=>{ if(GPS.stops.length>=12){ ui.toast('GPS: max 12 stops'); return; } GPS.stops.push(sel.apt?aptTarget(sel.apt):{x:sel.x,z:sel.z,n:sel.town?sel.town.n:'Stop '+(++GPS.seq)}); GPS.seq++; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
     const hm=$('gmhm'); if(hm) hm.onclick=()=>{ GPS.home={x:sel.x,z:sel.z,n:'Home'}; gpsSave(); gpsBeacons(); GMAP.sel=null; gmRender(); };
   } else co.style.display='none';
   // footer
@@ -4444,7 +4506,8 @@ function apCtl(v,dt){
 function apPlane(v,dt){
   const d=v.d, nx=GPS.route[0], toS=d.to||TAKEOFF, stS=d.stall||STALL, CR=85;
   if(!nx){ AP.on=false; ui.toast('Autopilot: no route'); return {f:0,s:0,dp:0,brake:true}; }
-  const dx=nx.x-v.x, dz=nx.z-v.z, dist=Math.hypot(dx,dz), tb=Math.atan2(-dx,-dz);
+  const dx=nx.x-v.x, dz=nx.z-v.z, dist=Math.hypot(dx,dz); let tb=Math.atan2(-dx,-dz);
+  if(nx.land&&dist<800){ const dirx=Math.sign(dx)||1, e=v.z-nx.z, k=clamp(dist/300,.2,1); tb=Math.atan2(-dirx,clamp(e*.012*k,-.6,.6)); }   // airport: line up with the runway centre line
   const rel=Math.atan2(Math.sin(tb-v.yaw),Math.cos(tb-v.yaw));
   const lastLeg=!GPS.route.some((q,i)=>i>0&&!q.via), G=groundAt(v.x,v.z,v.y+2), agl=v.y-G;
   let f=0, s=-clamp(rel*1.6,-1,1), dp=0, brake=false;
@@ -4465,7 +4528,7 @@ function apPlane(v,dt){
   const finalApproach=lastLeg&&dist<Math.max(120,(agl)*9+v.speed*4);
   if(finalApproach){
     // glide down: steeper when high, flare near the ground, hold a safe speed
-    let des=-clamp(agl/Math.max(dist,35),.03,.2); if(agl<7) des=agl<2.5?-.05:-.03; pitchTo(des);
+    let des=-clamp(agl/Math.max(dist,35),.03,nx.land?.27:.2); if(agl<7) des=agl<2.5?-.05:-.03; pitchTo(des);
     thrTo(v.speed>stS+8?.05:.55); if(agl<3){ thrTo(0); } AP.land=agl<30;
     if(v.speed<stS+2) pitchTo(0);
     s=-clamp(rel*1.6,-1,1); if(dist<70&&Math.abs(rel)>.7) s=0;
