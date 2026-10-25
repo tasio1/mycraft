@@ -806,7 +806,8 @@ function useBed(x,y,z){
 }
 
 const OPAQUE = new Uint8Array(2048); BLOCKS.forEach((b,i)=>{ if(b&&b.opaque) OPAQUE[i]=1; });
-const isSolid = id => id !== B.AIR && id !== B.WATER && !OPEN_DOOR[id] && !LADDER[id];       // collidable
+const PLANT={}, PLANTDROP={};     // small walk-through plants (bushes, flowers, crops) and what they drop
+const isSolid = id => id !== B.AIR && id !== B.WATER && !OPEN_DOOR[id] && !LADDER[id] && !PLANT[id];       // collidable
 
 // ---- non-block items (ids 40+). tool = mining speed multiplier, use = consumable effect
 const I = {WOOD_PICK:40, IRON_PICK:41, GOLD_PICK:42, DIAMOND_PICK:43, COAL:44, IRON:45, GOLD:46, DIAMOND:47, SPEED:48, JUMP:49, COMPASS:50,
@@ -1232,6 +1233,186 @@ const SLIGHTS=[
 ];
 BIGTV[0].cost=[[I.IRON,6],[B.GLASS,4],[I.GOLD,1],[I.COAL,2]]; BIGTV[1].cost=[[I.IRON,12],[B.GLASS,8],[I.GOLD,3],[I.COAL,4],[B.GLOWSTONE,4]]; BIGTV[2].cost=[[B.PLANKS,10],[B.GLASS,4],[I.IRON,2],[I.COAL,2]];
 I.TREAT=248; ITEMS[248]={name:'Pet Treat',e:'\u{1F9B4}',desc:'right-click a wild pet to tame it'}; RECIPES.push({out:248,n:4,in:[[B.PLANKS,1],[I.COAL,1]]});
+// ===================== NATURE & FOOD: tree species, bushes, flowers, crops, food and drinks =====================
+_pid=1400;
+const NAT={leaf:{},log:{},plant:{}}, NATTAB={trees:[],bushes:[],crops:[],food:[],fruit:[],meals:[],sweets:[],drinks:[]};
+const blkByName=n=>{ for(let i=1;i<BLOCKS.length;i++) if(BLOCKS[i]&&BLOCKS[i].name===n) return i; return 0; };
+const F={};   // food ids by key
+// --- foods and drinks: [key, name, emoji, hp healed, group, effect]
+const FOODTAB=[
+ ['apple','Apple','🍎',3,'fruit'],['gapple','Green Apple','🍏',3,'fruit'],['pear','Pear','🍐',3,'fruit'],['orange','Orange','🍊',3,'fruit'],['lemon','Lemon','🍋',1,'fruit'],['banana','Banana','🍌',3,'fruit'],
+ ['wmelon','Watermelon Slice','🍉',3,'fruit'],['grapes','Grapes','🍇',2,'fruit'],['strawb','Strawberries','🍓',2,'fruit'],['blueb','Blueberries','🫐',2,'fruit'],['melon','Melon Slice','🍈',3,'fruit'],['cherries','Cherries','🍒',2,'fruit'],
+ ['peach','Peach','🍑',3,'fruit'],['mango','Mango','🥭',4,'fruit'],['pineapple','Pineapple','🍍',4,'fruit'],['coconut','Coconut','🥥',3,'fruit'],['kiwi','Kiwi','🥝',2,'fruit'],['plum','Plum','🍑',3,'fruit'],
+ ['avocado','Avocado','🥑',3,'fruit'],['olive','Olives','🫒',1,'fruit'],['fig','Figs','🍇',2,'fruit'],['raspb','Raspberries','🍓',2,'fruit'],['blackb','Blackberries','🫐',2,'fruit'],['currant','Redcurrants','🍒',1,'fruit'],['goosb','Gooseberries','🍈',1,'fruit'],
+ ['tomato','Tomato','🍅',2,'fruit'],['eggplant','Eggplant','🍆',2,'fruit'],['broccoli','Broccoli','🥦',2,'fruit'],['lettuce','Lettuce','🥬',1,'fruit'],['cucumber','Cucumber','🥒',1,'fruit'],['chili','Chili Pepper','🌶️',1,'fruit','speed'],
+ ['pepper','Bell Pepper','🫑',2,'fruit'],['corn','Corn','🌽',3,'fruit'],['carrot','Carrot','🥕',3,'fruit'],['garlic','Garlic','🧄',1,'fruit'],['onion','Onion','🧅',1,'fruit'],['potato','Potato','🥔',2,'fruit'],['spotato','Sweet Potato','🍠',3,'fruit'],
+ ['beans','Beans','🫘',2,'fruit'],['peanuts','Peanuts','🥜',2,'fruit'],['chestnut','Chestnuts','🌰',2,'fruit'],['mushroom','Mushroom','🍄',2,'fruit'],['wheat','Wheat','🌾',0,'fruit'],['pumpkin','Pumpkin Slice','🎃',3,'fruit'],
+ ['bread','Bread','🍞',5,'meals'],['croissant','Croissant','🥐',4,'meals'],['baguette','Baguette','🥖',5,'meals'],['flatbread','Flatbread','🫓',4,'meals'],['pretzel','Pretzel','🥨',3,'meals'],['bagel','Bagel','🥯',4,'meals'],
+ ['pancakes','Pancakes','🥞',5,'meals'],['waffle','Waffle','🧇',5,'meals'],['cheese','Cheese','🧀',3,'meals'],['butter','Butter','🧈',1,'meals'],['egg','Egg','🥚',1,'meals'],['boiledegg','Boiled Egg','🥚',3,'meals'],['friedegg','Fried Egg','🍳',5,'meals'],
+ ['rawbeef','Raw Beef','🥩',1,'meals'],['steak','Steak','🥩',8,'meals'],['chicken','Roast Chicken','🍗',7,'meals'],['ham','Ham','🍖',6,'meals'],['bacon','Bacon','🥓',4,'meals'],['sausage','Sausage','🌭',5,'meals'],
+ ['burger','Burger','🍔',8,'meals'],['fries','French Fries','🍟',4,'meals'],['pizza','Pizza Slice','🍕',7,'meals'],['sandwich','Sandwich','🥪',6,'meals'],['taco','Taco','🌮',6,'meals'],['burrito','Burrito','🌯',7,'meals'],
+ ['tamale','Tamale','🫔',5,'meals'],['kebab','Kebab','🥙',7,'meals'],['falafel','Falafel','🧆',4,'meals'],['paella','Paella','🥘',8,'meals'],['stew','Hearty Stew','🍲',8,'meals','regen'],['fondue','Cheese Fondue','🫕',6,'meals'],
+ ['soup','Soup','🥣',6,'meals'],['salad','Fresh Salad','🥗',5,'meals'],['popcorn','Popcorn','🍿',2,'meals'],['bento','Bento Box','🍱',8,'meals'],['ricecracker','Rice Cracker','🍘',2,'meals'],['onigiri','Rice Ball','🍙',4,'meals'],
+ ['rice','Rice','🍚',4,'meals'],['curry','Curry','🍛',8,'meals'],['ramen','Ramen','🍜',7,'meals'],['spaghetti','Spaghetti','🍝',7,'meals'],['oden','Skewers','🍢',4,'meals'],['sushi','Sushi','🍣',6,'meals'],
+ ['shrimpfry','Fried Shrimp','🍤',5,'meals'],['fishcake','Fish Cake','🍥',3,'meals'],['dumpling','Dumplings','🥟',5,'meals'],['takeout','Noodle Box','🥡',6,'meals'],['crab','Crab','🦀',6,'meals'],['lobster','Lobster','🦞',8,'meals'],
+ ['shrimp','Shrimp','🦐',4,'meals'],['squid','Squid','🦑',4,'meals'],['oyster','Oysters','🦪',3,'meals'],['fish','Raw Fish','🐟',1,'meals'],['cfish','Cooked Fish','🐠',6,'meals'],
+ ['icecream','Ice Cream Cone','🍦',3,'sweets'],['shaved','Shaved Ice','🍧',2,'sweets'],['sundae','Ice Cream Sundae','🍨',4,'sweets'],['donut','Donut','🍩',3,'sweets'],['cookie','Cookie','🍪',2,'sweets'],['bcake','Birthday Cake','🎂',10,'sweets'],
+ ['cakeslice','Cake Slice','🍰',6,'sweets'],['cupcake','Cupcake','🧁',4,'sweets'],['pie','Apple Pie','🥧',7,'sweets'],['chocolate','Chocolate Bar','🍫',3,'sweets'],['candy','Candy','🍬',1,'sweets'],['lollipop','Lollipop','🍭',1,'sweets'],
+ ['pudding','Pudding','🍮',4,'sweets'],['honey','Honey','🍯',3,'sweets'],['jam','Strawberry Jam','🍯',3,'sweets'],['dango','Dango','🍡',3,'sweets'],['mooncake','Mooncake','🥮',4,'sweets'],['fortune','Fortune Cookie','🥠',1,'sweets'],
+ ['gapplegold','Golden Apple','🍎',14,'sweets','regen'],
+ ['milk','Milk','🥛',2,'drinks'],['coffee','Coffee','☕',2,'drinks','speed'],['hotchoc','Hot Chocolate','☕',3,'drinks'],['tea','Tea','🫖',2,'drinks'],['greentea','Green Tea','🍵',2,'drinks'],['oj','Orange Juice','🧃',3,'drinks'],
+ ['aj','Apple Juice','🧃',3,'drinks'],['grapej','Grape Juice','🧃',3,'drinks'],['lemonade','Lemonade','🥤',3,'drinks'],['smoothie','Berry Smoothie','🥤',4,'drinks'],['bubble','Bubble Tea','🧋',4,'drinks'],['mate','Yerba Mate','🧉',2,'drinks','speed'],
+ ['soda','Fizzy Soda','🥤',2,'drinks'],['icedtea','Iced Tea','🥤',3,'drinks'],['milkshake','Milkshake','🥤',4,'drinks'],['coconutw','Coconut Water','🥥',3,'drinks'],['water','Bottle of Water','💧',1,'drinks'],['carrotj','Carrot Juice','🧃',3,'drinks'],
+ ['tomatoj','Tomato Juice','🧃',2,'drinks'],['mangolassi','Mango Lassi','🥛',4,'drinks'],['energy','Energy Drink','⚡',2,'drinks','jump'],['cocoa','Cocoa Milk','🥛',3,'drinks'],['punch','Fruit Punch','🍹',4,'drinks'],['kombucha','Kombucha','🫖',2,'drinks'],
+ ['sports','Sports Drink','🥤',3,'drinks','speed'],['almondm','Almond Milk','🥛',2,'drinks'],['cider','Apple Cider','🍎',3,'drinks'],['slush','Slush','🧊',2,'drinks'],['ginger','Ginger Fizz','🥤',2,'drinks'],
+];
+{ let id=1500; for(const [k,n,e,h,g,fx] of FOODTAB){ F[k]=id; ITEMS[id]={name:n,e,food:h,fx:fx||null,desc:(h?'right-click to eat/drink: +'+(h/2)+' heart'+(h>2?'s':''):'an ingredient')+(fx==='speed'?' and a speed boost':fx==='jump'?' and a jump boost':fx==='regen'?' and regeneration':''),foodTab:g}; NATTAB[g].push(id); id++; } }
+// --- textures for leaves, bushes, flowers and crops
+const nl=(key,name,c,fc,o)=>{ const id=pkBlock('natleaf',name,'fleaves',c,Object.assign({opaque:false,leafy:true,hard:.15,fc:fc},o||{})); NAT.leaf[key]=id; NATTAB.trees.push(id); return id; };
+const LCOL={birch:[126,168,70],spruce:[38,92,64],pine:[48,104,56],fir:[30,80,76],redwood:[40,102,50],darkoak:[44,92,38],acacia:[138,150,52],jungle:[40,150,40],palm:[76,160,56],willow:[150,180,84],baobab:[120,140,50]};
+for(const k in LCOL){ nl(k,k.charAt(0).toUpperCase()+k.slice(1).replace('darkoak','Dark Oak')+' Leaves',LCOL[k],null); }
+BLOCKS[NAT.leaf.darkoak].name='Dark Oak Leaves';
+const FRUITS=[['apple','Apple',[70,140,50],[225,40,40],'apple'],['orange','Orange',[58,130,50],[245,140,20],'orange'],['lemon','Lemon',[70,140,50],[245,230,60],'lemon'],['pear','Pear',[90,150,60],[190,215,80],'pear'],
+  ['peach','Peach',[80,145,60],[250,170,140],'peach'],['plum','Plum',[60,120,60],[110,40,120],'plum'],['cherryf','Cherry',[70,140,60],[160,10,35],'cherries'],['mango','Mango',[50,140,50],[240,170,30],'mango'],
+  ['banana','Banana',[60,150,50],[235,215,70],'banana'],['avocado','Avocado',[40,100,50],[50,80,30],'avocado'],['fig','Fig',[70,110,50],[100,50,90],'fig'],['olive','Olive',[110,130,80],[60,70,40],'olive']];
+const FRUITLEAF={};   // leaf block id -> food key
+for(const [k,n,c,fc,fk] of FRUITS){ const id=nl(k,n+' Tree Leaves',c,fc); FRUITLEAF[id]=fk; }
+// logs
+const natLog=(key,name,side,top,marks)=>{ const id=pkBlock('natlog',name,null,null,{tl:[['logtop',top,{bark:side}],['logside',side,{marks}]],hard:.5}); NAT.log[key]=id; NATTAB.trees.push(id); return id; };
+natLog('palm','Palm Log',[150,125,95],[190,165,125],[190,165,125]); natLog('redwood','Redwood Log',[112,52,36],[170,100,70],[150,80,55]); natLog('willow','Willow Log',[96,88,70],[150,140,110],[130,120,95]); natLog('baobab','Baobab Log',[128,104,86],[180,150,120],[150,120,95]);
+pkBlock('natlog','Bamboo Stalk','flat',[120,170,60],{hard:.3,amt:12}); NAT.log.bamboo=_pid-1; NATTAB.trees.push(NAT.log.bamboo);
+const capR=pkBlock('natlog','Red Mushroom Cap','cap',[200,40,40],{hard:.3,spot:[245,240,230]}), capB=pkBlock('natlog','Brown Mushroom Cap','cap',[140,96,60],{hard:.3,spot:[190,150,110]}), stemM=pkBlock('natlog','Mushroom Stem','flat',[225,220,205],{hard:.3,amt:8});
+NAT.log.capR=capR; NAT.log.capB=capB; NAT.log.stem=stemM; NATTAB.trees.push(capR,capB,stemM);
+for(const n of ['Birch Log','Spruce Log','Dark Oak Log','Acacia Log','Jungle Log','Cherry Log']) NATTAB.trees.push(blkByName(n));
+for(const n of ['Cactus','Pumpkin','Melon','Hay Bale','Autumn Leaves','Maple Leaves','Cherry Blossom','Golden Leaves']) NATTAB.trees.push(blkByName(n));
+NATTAB.trees.push(B.LOG,B.LEAVES);
+// small plants (walk-through): bushes, flowers, grass, crops
+const plantBlock=(cat,name,boxes,icon,drop,desc)=>{ const id=_pid++; BLOCKS[id]={name,tiles:[icon,icon,icon],opaque:false,hard:.05,lit:false,box:boxes,desc:desc||''}; PLANT[id]=1; if(drop) PLANTDROP[id]=drop; NATTAB[cat].push(id); return id; };
+const GR=pkTile('flat',[70,150,50],{amt:14}), GRD=pkTile('flat',[50,115,48],{amt:14}), GRL=pkTile('flat',[110,180,60],{amt:12}), STEM=pkTile('flat',[60,130,50],{amt:8});
+const BERRIES=[['bush','Leaf Bush',[60,140,50],null,null],['strawb','Strawberry Bush',[55,130,50],[230,30,50],'strawb'],['blueb','Blueberry Bush',[50,110,60],[60,70,200],'blueb'],['raspb','Raspberry Bush',[60,130,50],[210,30,100],'raspb'],
+ ['blackb','Blackberry Bush',[45,100,50],[40,20,55],'blackb'],['currant','Redcurrant Bush',[60,130,50],[225,35,45],'currant'],['grapes','Grape Vine',[70,140,50],[130,60,170],'grapes'],['goosb','Gooseberry Bush',[80,140,60],[170,200,80],'goosb'],
+ ['tomato','Tomato Plant',[55,125,45],[235,50,40],'tomato'],['pepper','Pepper Plant',[55,125,45],[230,40,30],'pepper'],['chili','Chili Plant',[50,115,45],[255,60,20],'chili'],['eggplant','Eggplant Plant',[55,120,60],[90,30,110],'eggplant'],['cucumber','Cucumber Plant',[55,125,45],[60,150,60],'cucumber']];
+NAT.bush={};
+for(const [k,n,c,fc,fk] of BERRIES){ const t=pkTile('fleaves',c,{solid:true,fc:fc||[255,255,255]}); const drop=fk?()=>[[F[fk],2+Math.floor(Math.random()*3)],[NAT.bush[k],1]]:null; NAT.bush[k]=plantBlock('bushes',n,[[[2,0,2,14,12,14],t]],t,drop,fk?'break it to pick the fruit':'a leafy bush'); }
+// flowers: [name, head colour, centre colour, kind]
+const FLOWERS=[['Red Rose',[210,25,45],[250,210,60],'rose'],['Pink Rose',[240,120,160],[250,210,60],'rose'],['White Daisy',[245,245,240],[250,200,40],'daisy'],['Red Tulip',[225,40,40],null,'tulip'],['Yellow Tulip',[245,205,40],null,'tulip'],
+ ['Pink Tulip',[240,130,175],null,'tulip'],['Orange Tulip',[240,130,30],null,'tulip'],['White Tulip',[240,240,235],null,'tulip'],['Purple Tulip',[150,60,190],null,'tulip'],['Poppy',[235,30,25],[30,20,20],'daisy'],
+ ['Dandelion',[250,225,40],[255,245,120],'daisy'],['Cornflower',[60,100,225],[240,240,255],'daisy'],['Bluebell',[90,110,230],null,'bell'],['Allium',[170,90,210],null,'ball'],['Orchid',[235,235,250],[220,60,150],'daisy'],
+ ['Marigold',[245,160,20],[200,90,10],'daisy'],['Peony',[245,160,190],[255,230,120],'ball'],['Lavender',[150,110,210],null,'spike'],['Sunflower',[250,205,30],[110,70,20],'sun'],['Hydrangea',[110,150,240],null,'ball'],
+ ['Lilac',[190,140,225],null,'spike'],['Pansy',[130,60,160],[250,220,60],'daisy'],['Violet',[110,60,190],[250,230,90],'daisy'],['Forget-me-not',[120,170,250],[250,240,120],'daisy'],['Snowdrop',[245,250,255],null,'bell'],['Foxglove',[210,100,200],null,'spike']];
+NAT.flower=[];
+for(const [n,c,c2,kind] of FLOWERS){ const th=pkTile('flat',c,{amt:10}), tc=c2?pkTile('flat',c2,{amt:6}):th; let b;
+  if(kind==='rose'||kind==='daisy') b=[[[7,0,7,9,8,9],STEM],[[5,8,5,11,12,11],th],[[7,12,7,9,13,9],tc]];
+  else if(kind==='tulip') b=[[[7,0,7,9,9,9],STEM],[[5.5,9,5.5,10.5,14,10.5],th]];
+  else if(kind==='bell') b=[[[7,0,7,9,10,9],STEM],[[6,10,6,10,13,10],th],[[7,13,7,9,14,9],STEM]];
+  else if(kind==='ball') b=[[[7,0,7,9,8,9],STEM],[[4,8,4,12,15,12],th]];
+  else if(kind==='spike') b=[[[7,0,7,9,6,9],STEM],[[6,6,6,10,15,10],th]];
+  else b=[[[7,0,7,9,12,9],STEM],[[3,11,3,13,16,13],th],[[5,12,5,11,16,11],tc]];
+  NAT.flower.push(plantBlock('bushes',n,b,th,()=>[[NAT.plant[n],1]],'a flower for decoration')); NAT.plant[n]=NAT.flower[NAT.flower.length-1]; }
+NAT.grass=plantBlock('bushes','Tall Grass',[[[2,0,2,5,9,5],GR],[[8,0,8,11,12,11],GRL],[[11,0,3,14,8,6],GR],[[3,0,10,6,11,13],GRD],[[9,0,1,11,6,3],GRD]],GR,()=>Math.random()<.15?[[F.wheat,1]]:[],'tall grass');
+NAT.fern=plantBlock('bushes','Fern',[[[1,0,7,15,3,9],GRD],[[7,0,1,9,3,15],GRD],[[3,3,3,13,7,13],GR],[[5,7,5,11,10,11],GRL]],GRD,()=>[[NAT.fern,1]],'a fern');
+const MR=pkTile('cap',[200,40,40],{spot:[245,240,230]}), MBr=pkTile('cap',[140,96,60],{spot:[190,150,110]}), MS=pkTile('flat',[225,220,205],{amt:6});
+NAT.mushR=plantBlock('bushes','Red Mushroom',[[[7,0,7,9,5,9],MS],[[4,5,4,12,8,12],MR]],MR,()=>[[F.mushroom,1],[NAT.mushR,1]],'a red mushroom');
+NAT.mushB=plantBlock('bushes','Brown Mushroom',[[[7,0,7,9,5,9],MS],[[4,5,4,12,8,12],MBr]],MBr,()=>[[F.mushroom,1],[NAT.mushB,1]],'a brown mushroom');
+// crops: wheat field patches and vegetables
+const WH=pkTile('flat',[220,190,80],{amt:14}), WHG=pkTile('flat',[170,170,60],{amt:12}), OR=pkTile('flat',[240,130,30],{amt:10}), PT=pkTile('flat',[200,170,100],{amt:10}), CN=pkTile('flat',[245,215,60],{amt:10}), RD=pkTile('flat',[225,50,40],{amt:8});
+NAT.wheat=plantBlock('crops','Wheat Plant',[[[1,0,1,3,13,3],WH],[[5,0,2,7,14,4],WHG],[[9,0,1,11,13,3],WH],[[13,0,2,15,14,4],WHG],[[2,0,7,4,14,9],WHG],[[7,0,6,9,13,8],WH],[[11,0,7,13,14,9],WHG],[[1,0,11,3,13,13],WH],[[5,0,12,7,14,14],WHG],[[9,0,11,11,13,13],WH],[[13,0,12,15,14,14],WHG]],WH,()=>[[F.wheat,2+Math.floor(Math.random()*2)],[NAT.wheat,1]],'wheat: break it to harvest');
+const crop=(key,name,top,fruitTile,fk,n)=>{ NAT[key]=plantBlock('crops',name,top,fruitTile,()=>[[F[fk],n||2],[NAT[key],1]],name+': break it to harvest'); };
+crop('carrotP','Carrot Plant',[[[3,0,3,13,6,13],GR],[[6,6,6,10,10,10],GRL]],OR,'carrot',3);
+crop('potatoP','Potato Plant',[[[2,0,2,14,9,14],GRD],[[4,9,4,12,11,12],GR]],PT,'potato',3);
+crop('cornP','Corn Stalk',[[[6,0,6,10,16,10],GR],[[3,6,7,6,10,9],CN],[[10,8,7,13,12,9],CN]],CN,'corn',2);
+crop('onionP','Onion Plant',[[[4,0,4,12,10,12],GRL]],GRL,'onion',2); crop('garlicP','Garlic Plant',[[[4,0,4,12,10,12],GRD]],GRD,'garlic',2); crop('lettuceP','Lettuce Plant',[[[2,0,2,14,7,14],GRL]],GRL,'lettuce',2);
+crop('broccoliP','Broccoli Plant',[[[6,0,6,10,5,10],GRD],[[3,5,3,13,10,13],GRD]],GRD,'broccoli',2); crop('beansP','Bean Plant',[[[2,0,2,14,12,4],GR],[[2,0,12,14,12,14],GR]],GR,'beans',3);
+crop('peanutP','Peanut Plant',[[[3,0,3,13,7,13],GR]],GR,'peanuts',3); crop('spotP','Sweet Potato Plant',[[[2,0,2,14,6,14],GRD]],GRD,'spotato',2);
+// tall stalks of bamboo and cactus blocks already exist as full blocks
+// --- eating
+function eatFood(id){
+  const it=ITEMS[id]; if(!it||it.food===undefined||count(id)<=0) return;
+  if(it.food===0){ ui.toast(it.name+' is an ingredient - craft something tasty with it'); return; }
+  if(!creative&&hp>=MAXHP&&!it.fx){ ui.toast('You are full'); return; }
+  if(!creative) hp=Math.min(MAXHP,hp+it.food);
+  if(it.fx==='speed') fx.speed=40; else if(it.fx==='jump') fx.jump=40; else if(it.fx==='regen'){ regenT=0; hp=Math.min(MAXHP,hp+4); }
+  if(!creative){ inv[id]--; markProgress(); }
+  ui.feed(it.e+' '+(it.foodTab==='drinks'?'Refreshing! ':'Yum! ')+'+'+(it.food/2)+' heart'+(it.food>2?'s':'')+(it.fx?' + '+it.fx:''));
+  sfx('click'); ui.renderHotbar(); updateStats(); if(typeof updateHearts==='function') updateHearts();
+}
+// --- recipes: cook with what you pick
+const rcp=(out,n,...inn)=>RECIPES.push({out:F[out],n,in:inn.map(([k,q])=>[F[k],q])});
+rcp('bread',2,['wheat',3]); rcp('flatbread',2,['wheat',2]); rcp('baguette',1,['wheat',3],['butter',1]); rcp('pretzel',2,['wheat',2],['butter',1]); rcp('croissant',2,['wheat',3],['butter',2]); rcp('bagel',2,['wheat',3],['egg',1]);
+rcp('pancakes',2,['wheat',2],['egg',1],['milk',1]); rcp('waffle',2,['wheat',2],['egg',1],['honey',1]); rcp('cookie',4,['wheat',2],['chocolate',1]); rcp('cakeslice',4,['bcake',1]); rcp('bcake',1,['wheat',3],['egg',2],['honey',1],['milk',1]);
+rcp('cupcake',3,['wheat',2],['egg',1],['honey',1]); rcp('donut',3,['wheat',2],['honey',1],['egg',1]); rcp('pie',1,['wheat',3],['apple',3],['honey',1]); rcp('jam',2,['strawb',4],['honey',1]); rcp('pudding',2,['milk',2],['egg',1],['honey',1]);
+rcp('sandwich',2,['bread',2],['cheese',1],['lettuce',1]); rcp('burger',1,['bread',1],['steak',1],['lettuce',1],['tomato',1]); rcp('fries',2,['potato',2]); rcp('pizza',2,['flatbread',1],['tomato',2],['cheese',2]);
+rcp('taco',2,['flatbread',1],['steak',1],['lettuce',1]); rcp('burrito',1,['flatbread',1],['rice',1],['beans',1],['chicken',1]); rcp('salad',2,['lettuce',2],['tomato',1],['cucumber',1],['carrot',1]); rcp('soup',2,['tomato',2],['onion',1],['carrot',1]);
+rcp('stew',2,['steak',1],['potato',2],['carrot',2],['onion',1]); rcp('spaghetti',2,['wheat',3],['tomato',2],['cheese',1]); rcp('boiledegg',2,['egg',2]); rcp('friedegg',1,['egg',1],['butter',1]); rcp('steak',1,['rawbeef',1],[ 'butter',1]);
+rcp('cfish',1,['fish',1],['butter',1]); rcp('popcorn',2,['corn',1]); rcp('sushi',2,['rice',1],['fish',1]); rcp('onigiri',2,['rice',2]); rcp('kebab',1,['flatbread',1],['chicken',1],['onion',1],['tomato',1]);
+rcp('oj',2,['orange',3]); rcp('aj',2,['apple',3]); rcp('grapej',2,['grapes',3]); rcp('lemonade',2,['lemon',2],['honey',1],['water',1]); rcp('smoothie',2,['strawb',2],['blueb',2],['milk',1]); rcp('carrotj',2,['carrot',3]); rcp('tomatoj',2,['tomato',3]);
+rcp('hotchoc',2,['milk',2],['chocolate',1]); rcp('milkshake',2,['icecream',1],['milk',2]); rcp('icecream',2,['milk',2],['honey',1]); rcp('punch',3,['orange',1],['apple',1],['grapes',1],['water',1]); rcp('gapplegold',1,['apple',1],['honey',4]); rcp('cider',2,['apple',4]);
+rcp('coconutw',1,['coconut',1]); rcp('mangolassi',2,['mango',2],['milk',1]); rcp('cocoa',2,['milk',2],['chocolate',1]); rcp('tea',2,['water',1],['honey',1]); rcp('chocolate',2,['honey',2],['peanuts',1]);
+// loot: food in presents
+LOOT.common.push([F.apple,4],[F.bread,4],[F.carrot,4],[F.cheese,3],[F.water,3],[F.banana,3],[F.milk,2],[F.cookie,4]);
+LOOT.uncommon.push([F.steak,3],[F.pizza,3],[F.sushi,3],[F.pie,2],[F.coffee,2],[F.energy,2],[F.rawbeef,3],[F.fish,3],[F.egg,4],[F.rice,4]);
+LOOT.rare.push([F.bcake,1],[F.gapplegold,2],[F.lobster,2],[F.bento,2]);
+NATTAB.trees=NATTAB.trees.filter(Boolean);
+// --- tree species table and shapes (used by World.generate)
+const LOGN=n=>blkByName(n)||B.LOG;
+const SP={
+ oak:{shape:'oak0',log:B.LOG,leaf:B.LEAVES}, bigoak:{shape:'bigoak',log:B.LOG,leaf:B.LEAVES}, birch:{shape:'birch',log:LOGN('Birch Log'),leaf:NAT.leaf.birch},
+ spruce:{shape:'spruce',log:LOGN('Spruce Log'),leaf:NAT.leaf.spruce}, pine:{shape:'pine',log:LOGN('Spruce Log'),leaf:NAT.leaf.pine}, fir:{shape:'fir',log:LOGN('Spruce Log'),leaf:NAT.leaf.fir},
+ redwood:{shape:'redwood',log:NAT.log.redwood,leaf:NAT.leaf.redwood}, darkoak:{shape:'darkoak',log:LOGN('Dark Oak Log'),leaf:NAT.leaf.darkoak}, acacia:{shape:'acacia',log:LOGN('Acacia Log'),leaf:NAT.leaf.acacia},
+ jungle:{shape:'jungle',log:LOGN('Jungle Log'),leaf:NAT.leaf.jungle}, palm:{shape:'palm',log:NAT.log.palm,leaf:NAT.leaf.palm}, cherry:{shape:'cherry',log:LOGN('Cherry Log'),leaf:LOGN('Cherry Blossom')},
+ willow:{shape:'willow',log:NAT.log.willow,leaf:NAT.leaf.willow}, baobab:{shape:'baobab',log:NAT.log.baobab,leaf:NAT.leaf.baobab},
+ maple:{shape:'round',h:[5,7],rx:3,ry:2,log:B.LOG,leaf:LOGN('Maple Leaves')}, autumn:{shape:'round',h:[5,7],rx:3,ry:2,log:B.LOG,leaf:LOGN('Autumn Leaves')}, golden:{shape:'round',h:[5,7],rx:3,ry:2,log:B.LOG,leaf:LOGN('Golden Leaves')},
+ dead:{shape:'dead',log:LOGN('Acacia Log'),leaf:0}, cactus:{shape:'cactus',log:LOGN('Cactus'),leaf:0}, bamboo:{shape:'bamboo',log:NAT.log.bamboo,leaf:0},
+ mushR:{shape:'mushroom',log:NAT.log.stem,leaf:NAT.log.capR}, mushB:{shape:'mushroom',log:NAT.log.stem,leaf:NAT.log.capB},
+};
+for(const [k] of FRUITS) SP['f_'+k]={shape:'fruit',log:B.LOG,leaf:NAT.leaf[k]};
+const FRUITKEYS=['apple','apple','apple','pear','peach','plum','cherryf','orange','lemon','fig','olive'];
+function growTree(sp,put,x,g,z,R){
+  const LG=sp.log, LF=sp.leaf, ab=Math.abs, rr=(a,b,k)=>a+Math.floor(R(k||1)*(b-a+1));
+  const lf=(a,b,c)=>put(a,b,c,LF,true), lg=(a,b,c)=>put(a,b,c,LG,false);
+  const col=h=>{ for(let y=g+1;y<=g+h;y++) lg(x,y,z); };
+  const col2=h=>{ for(let y=g+1;y<=g+h;y++){ lg(x,y,z); lg(x+1,y,z); lg(x,y,z+1); lg(x+1,y,z+1); } };
+  const blob=(cx,cy,cz,rx,ry,rz)=>{ for(let dy=-ry;dy<=ry;dy++)for(let dz=-rz;dz<=rz;dz++)for(let dx=-rx;dx<=rx;dx++){ const d=dx*dx/(rx*rx+.01)+dy*dy/(ry*ry+.01)+dz*dz/(rz*rz+.01); if(d<=1.1&&(d<.75||R(dx*9+dz*5+dy*3+60+cx)>.25)) lf(cx+dx,cy+dy,cz+dz); } };
+  const cone=(y0,H,maxR,cx,cz,ox)=>{ for(let k=0;k<H;k++){ const rad=Math.max(0,Math.round(maxR*(1-k/H)*(k%2?1:.8))); for(let dz=-rad;dz<=rad;dz++)for(let dx=-rad;dx<=rad;dx++){ if(ab(dx)+ab(dz)>rad+(rad>1?1:0)) continue; lf(cx+dx,y0+k,cz+dz); } } };
+  switch(sp.shape){
+    case 'oak0': { const top=g+4+rr(0,2,1); for(let dy=-2;dy<=1;dy++){ const r=dy<=-1?2:1; for(let dz=-r;dz<=r;dz++)for(let dx=-r;dx<=r;dx++){ if(r===2&&ab(dx)===2&&ab(dz)===2) continue; if(dy===1&&ab(dx)+ab(dz)>1) continue; lf(x+dx,top+dy,z+dz); } } for(let y=g+1;y<=top;y++) lg(x,y,z); break; }
+    case 'round': { const h=rr(sp.h[0],sp.h[1]); col(h); blob(x,g+h,z,sp.rx,sp.ry,sp.rx); break; }
+    case 'fruit': { const h=rr(4,5); col(h); blob(x,g+h,z,2,2,2); break; }
+    case 'bigoak': { const h=rr(6,8); col(h); blob(x,g+h,z,4,3,4); blob(x+3,g+h-1,z+1,2,2,2); blob(x-3,g+h-2,z-2,2,2,2); break; }
+    case 'birch': { const h=rr(6,9); col(h); blob(x,g+h-1,z,2,3,2); lf(x,g+h+3,z); break; }
+    case 'spruce': { const H=rr(8,12); col(H+1); cone(g+3,H-1,3,x,z); lf(x,g+H+2,z); break; }
+    case 'fir': { const H=rr(8,11); col(H+1); cone(g+3,H-1,3,x,z); lf(x,g+H+2,z); for(let k=3;k<H;k+=2){ for(let dz=-2;dz<=2;dz++)for(let dx=-2;dx<=2;dx++) if(R(dx*7+dz*3+k*11)>.7&&ab(dx)+ab(dz)<=2) put(x+dx,g+k+1,z+dz,B.SNOW,true); } break; }
+    case 'pine': { const H=rr(12,17); col(H+1); for(let k=Math.floor(H*.4);k<=H+1;k++){ const rad=Math.max(1,Math.round((H+3-k)*.2)); for(let dz=-rad;dz<=rad;dz++)for(let dx=-rad;dx<=rad;dx++){ if(ab(dx)+ab(dz)>rad+(rad>1?1:0)) continue; if((k&1)||ab(dx)+ab(dz)<=1) lf(x+dx,g+k,z+dz); } } lf(x,g+H+2,z); break; }
+    case 'redwood': { const H=rr(16,24); col2(H); for(let k=Math.floor(H*.35);k<=H+3;k++){ const rad=Math.max(0,Math.round((H+4-k)*.22)); for(let dz=-rad;dz<=rad+1;dz++)for(let dx=-rad;dx<=rad+1;dx++){ const ex=dx<0?-dx:dx>1?dx-1:0, ez=dz<0?-dz:dz>1?dz-1:0; if(ex+ez>rad+(rad>1?1:0)) continue; if((k&1)||ex+ez<=1) lf(x+dx,g+k,z+dz); } } break; }
+    case 'darkoak': { const h=rr(6,8); col2(h); blob(x,g+h,z,5,2,5); blob(x+1,g+h+2,z+1,3,1,3); blob(x+1,g+h-2,z+1,3,1,3); break; }
+    case 'acacia': { const h=rr(4,6), d=Math.floor(R(3)*4), dx=[1,-1,0,0][d], dz=[0,0,1,-1][d]; col(h-1); lg(x,g+h,z); lg(x+dx,g+h,z+dz); lg(x+dx,g+h+1,z+dz); const cx=x+dx, cz=z+dz, ty=g+h+2; for(let a=-3;a<=3;a++)for(let b=-3;b<=3;b++){ const q=a*a+b*b; if(q<=9) lf(cx+a,ty,cz+b); if(q<=4) lf(cx+a,ty+1,cz+b); } break; }
+    case 'jungle': { const h=rr(9,14); col(h); blob(x,g+h,z,4,2,4); blob(x,g+h+2,z,2,1,2); blob(x+2,g+h-4,z,1,1,1); blob(x-2,g+h-6,z+1,1,1,1); break; }
+    case 'palm': { const h=rr(6,9), d=Math.floor(R(3)*4), dx=[1,-1,0,0][d], dz=[0,0,1,-1][d]; let px=x, pz=z; for(let i=1;i<=h;i++){ px=x+Math.round(dx*i*.22); pz=z+Math.round(dz*i*.22); lg(px,g+i,pz); }
+      for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]) for(let k=1;k<=4;k++) lf(px+a*k,g+h+1-(k>=3?1:0)-(k>=4?1:0),pz+b*k); lf(px,g+h+1,pz); lf(px,g+h+2,pz); break; }
+    case 'cherry': { const h=rr(4,6); col(h); blob(x,g+h,z,3,2,3); break; }
+    case 'willow': { const h=rr(5,7); col(h); blob(x,g+h,z,3,2,3); for(let a=-3;a<=3;a++)for(let b=-3;b<=3;b++){ const q=a*a+b*b; if(q<5||q>10) continue; const n=rr(2,5,a*7+b*13+5); for(let k=1;k<=n;k++) if(R(a*5+b*9+k*3)>.2) lf(x+a,g+h-1-k,z+b); } break; }
+    case 'baobab': { const h=rr(5,7); for(let y=g+1;y<=g+h;y++){ lg(x,y,z); lg(x+1,y,z); lg(x-1,y,z); lg(x,y,z+1); lg(x,y,z-1); } lg(x+2,g+h,z); lg(x-2,g+h,z+1); lg(x+3,g+h+1,z); lg(x-3,g+h+1,z+1); blob(x,g+h+2,z,3,1,3); blob(x+3,g+h+2,z,2,1,2); blob(x-3,g+h+2,z+1,2,1,2); break; }
+    case 'dead': { const h=rr(4,7); col(h); lg(x+1,g+h-1,z); lg(x+2,g+h,z); lg(x-1,g+h-2,z); lg(x-2,g+h-1,z); lg(x,g+h,z+1); lg(x,g+h+1,z+2); break; }
+    case 'cactus': { const h=rr(2,5); col(h); if(h>=3&&R(4)>.4){ put(x+1,g+2,z,LG,false); put(x+1,g+3,z,LG,false); } break; }
+    case 'bamboo': { const n=rr(2,5,2); for(let i=0;i<n;i++){ const bx=x+Math.round((R(i*5+8)-.5)*3), bz=z+Math.round((R(i*7+9)-.5)*3), h=rr(6,12,i+20); for(let y=g+1;y<=g+h;y++) put(bx,y,bz,LG,false); } break; }
+    case 'mushroom': { const h=rr(4,6); col(h); for(let a=-3;a<=3;a++)for(let b=-3;b<=3;b++){ const q=a*a+b*b; if(q<=10) put(x+a,g+h+1,z+b,LF,false); if(q>=5&&q<=10) put(x+a,g+h,z+b,LF,false); } put(x,g+h+2,z,LF,false); break; }
+  }
+}
+// pick a species from the climate at a place; t = temperature, m = moisture, f = patchy "forest type" noise, q = dice
+function pickTree(t,m,f,q,gh,beach){
+  if(beach) return t>.12?(q<.5?'cactus':'palm'):(t>-.1?'palm':null);
+  if(gh>=44) return q<.4?'spruce':q<.75?'pine':'fir';
+  if(gh<=SEA_LEVEL+3&&t>-.1&&q<.3) return 'willow';
+  if(t<-.13) return q<.35?'spruce':q<.6?'pine':q<.8?'fir':q<.93?'birch':'dead';
+  if(t>.14){ if(m<-.05) return q<.4?'acacia':q<.52?'baobab':q<.64?'dead':q<.7?'cactus':'oak';
+    return q<.38?'jungle':q<.5?'bamboo':q<.58?'f_banana':q<.64?'f_mango':q<.66?'mushR':q<.8?'bigoak':q<.9?'darkoak':'palm'; }
+  if(f<-.17) return q<.3?'maple':q<.6?'autumn':q<.8?'golden':'oak';
+  if(f>.2) return q<.55?'cherry':q<.8?'birch':'oak';
+  if(m>.12) return q<.3?'darkoak':q<.5?'oak':q<.65?'birch':q<.75&&gh>30?'redwood':q<.77?'mushB':q<.9?'bigoak':'f_'+FRUITKEYS[Math.floor(q*100)%FRUITKEYS.length];
+  if(m<-.12) return q<.55?'oak':q<.8?'birch':q<.9?'acacia':'bigoak';
+  return q<.4?'oak':q<.62?'birch':q<.74?'bigoak':q<.8?'redwood':q<.9?'f_'+FRUITKEYS[Math.floor(q*1000)%FRUITKEYS.length]:'darkoak';
+}
+
 /* ---- GUNS (data) ---- */
 // ---- melee weapons (item ids 1000+; blocks use ids < 1000)
 const WEAP={}, WEAPON_IDS=[];
@@ -1692,6 +1873,9 @@ const Textures = (() => {
     tiles:(t,c,o)=>{ const m=o.c2||[170,170,170]; each(t,(x,y)=>{ if(x%8===7||y%8===7) P(t,x,y,m); else noisy(t,x,y,c,5); }); },
     checker:(t,c,o)=>{ const d=o.c2||[20,20,20]; each(t,(x,y)=>noisy(t,x,y,(((x>>2)+(y>>2))&1)?d:c,4)); },
     stained:(t,c)=>each(t,(x,y)=>{ const e=x===0||y===0||x===15||y===15; if(e) P(t,x,y,c,.75); else if((x===3&&y===3)||(x===4&&y===4)||(x===11&&y===10)) P(t,x,y,[255,255,255]); else if(((x+y)&1)===0) P(t,x,y,c,(x+y)%8===0?1.12:.95); else px(t,x,y,0,0,0,0); }),
+    fleaves:(t,c,o)=>{ const fc=o.fc||[220,40,40]; each(t,(x,y)=>{ if(!o.solid&&rnd()<.14) px(t,x,y,0,0,0,0); else { noisy(t,x,y,c,16); if(rnd()<.1) P(t,x,y,c,.65); } });
+      if(o.fc||o.solid) for(let i=0;i<(o.solid?10:7);i++){ const x=1+Math.floor(rnd()*13), y=1+Math.floor(rnd()*13); px(t,x,y,fc[0],fc[1],fc[2]); px(t,x+1,y,fc[0]*.78,fc[1]*.78,fc[2]*.78); px(t,x,y+1,fc[0]*.78,fc[1]*.78,fc[2]*.78); } },
+    cap:(t,c,o)=>each(t,(x,y)=>{ noisy(t,x,y,c,10); const sp=o.spot||[240,240,235]; if(rnd()<.07||((x*7+y*3)%11===0&&rnd()<.5)) px(t,x,y,sp[0],sp[1],sp[2]); }),
     leaves:(t,c)=>each(t,(x,y)=>{ if(rnd()<.16) px(t,x,y,0,0,0,0); else { noisy(t,x,y,c,18); if(rnd()<.1) P(t,x,y,c,.65); } }),
     slats:(t,c,o)=>{ const d=o.c2||[20,22,28]; each(t,(x,y)=>{ if(y%4===1||y%4===2) noisy(t,x,y,d,2); else noisy(t,x,y,c,4); }); },
     stripes:(t,c,o)=>{ const d=o.c2||[20,20,20]; each(t,(x,y)=>noisy(t,x,y,((((x+y)>>2)&1)?d:c),3)); },
@@ -2313,7 +2497,7 @@ class World {
         for(let yy=y+1;yy<top;yy++) d[yy*256+ci]=(yy<=SEA_LEVEL?B.COBBLE:B.DIRT);
         for(let yy=Math.min(CH-1,y);yy>top;yy--) d[yy*256+ci]=B.AIR;
         const mid=r.ax===0?(z===r.c):(x===r.c), dash=r.ax===0?(((x%8)+8)%8<4):(((z%8)+8)%8<4);
-        d[top*256+ci]=(mid&&dash)?B.ROAD_LINE:B.ASPHALT; for(let yy=top+1;yy<=Math.min(CH-1,top+3);yy++){ const i=yy*256+ci; if(d[i]===B.WATER||d[i]===B.LOG||d[i]===B.LEAVES) d[i]=B.AIR; } clearTop(lx,lz,top); hs[ci]=top; } } }
+        d[top*256+ci]=(mid&&dash)?B.ROAD_LINE:B.ASPHALT; for(let yy=top+1;yy<=Math.min(CH-1,top+3);yy++){ const i=yy*256+ci; d[i]=B.AIR; } clearTop(lx,lz,top); hs[ci]=top; } } }
     // -- the settlement itself
     if(own&&hit(own.x-own.R-10,own.z-own.R-10,own.x+own.R+10,own.z+own.R+10)){ busy=true; const y0=own.y0;
       for(let z=0;z<CS;z++)for(let x=0;x<CS;x++){ const wx=X0+x, wz=Z0+z; if(Math.max(Math.abs(wx-own.x),Math.abs(wz-own.z))<=own.R+1){ for(let yy=y0+1;yy<=Math.min(CH-1,y0+30);yy++) d[yy*256+z*CS+x]=B.AIR; } }
@@ -2392,28 +2576,46 @@ class World {
       }
       for(let y=h+1;y<=SEA_LEVEL;y++) d[y*256+col]=B.WATER;
     }
-    // trees: look 2 blocks beyond the chunk so canopies crossing borders match
-    for(let lz=-2;lz<CS+2;lz++)for(let lx=-2;lx<CS+2;lx++){
-      const wx=cx*CS+lx, wz=cz*CS+lz;
-      if(this.hash(wx,wz)>TREE_CHANCE) continue;
+    // trees: look 6 blocks beyond the chunk so big canopies crossing borders match; species depend on climate (temperature, moisture, patch noise)
+    const nz=this.noise;
+    for(let lz=-6;lz<CS+6;lz++)for(let lx=-6;lx<CS+6;lx++){
+      const wx=cx*CS+lx, wz=cz*CS+lz, hh=this.hash(wx,wz);
+      if(hh>TREE_CHANCE*3.4) continue;
       if(this.inSettle(wx,wz)) continue;
       const inside=lx>=0&&lx<CS&&lz>=0&&lz<CS;
       const gh=inside?hs[lz*CS+lx]:this.groundH(wx,wz);
-      if(gh<=SEA_LEVEL+1||gh>50) continue;
-      const top=gh+4+Math.floor(this.hash(wx+911,wz-77)*3);
+      const t=nz.fbm(wx*.0016+77,wz*.0016-40,2), m=nz.fbm(wx*.002-160,wz*.002+210,2), f=nz.fbm(wx*.01+333,wz*.01+17,2);
+      const beach=gh===SEA_LEVEL+1;
+      if(gh<SEA_LEVEL+1||gh>50) continue;
+      const dens=beach?.5:(t>.14&&m>=-.05)?2.6:(m>.12?1.9:t<-.13?1.2:m<-.12?.5:1);
+      if(hh>TREE_CHANCE*dens) continue;
+      const q=this.hash(wx*3+19,wz*5-23), key=pickTree(t,m,f,q,gh,beach); if(!key) continue;
+      const sp=SP[key]; if(!sp) continue;
+      if((sp.shape==='cactus'||sp.shape==='palm')&&!beach&&key!=='cactus'&&key!=='palm'&&false) continue;
       const put=(x,y,z,id,onlyAir)=>{
         if(x<0||x>=CS||z<0||z>=CS||y<0||y>=CH) return;
-        const i=y*256+z*CS+x; if(!onlyAir||d[i]===B.AIR) d[i]=id;
+        const i=y*256+z*CS+x; if(!onlyAir||d[i]===B.AIR||d[i]===B.LEAVES&&false) d[i]=id;
       };
-      for(let dy=-2;dy<=1;dy++){
-        const r=dy<=-1?2:1;
-        for(let dz=-r;dz<=r;dz++)for(let dx=-r;dx<=r;dx++){
-          if(r===2&&Math.abs(dx)===2&&Math.abs(dz)===2) continue;
-          if(dy===1&&Math.abs(dx)+Math.abs(dz)>1) continue;
-          put(lx+dx,top+dy,lz+dz,B.LEAVES,true);
-        }
-      }
-      for(let y=gh+1;y<=top;y++) put(lx,y,lz,B.LOG,false);
+      growTree(sp,put,lx,gh,lz,k=>this.hash(wx*17+k*131+3,wz*29+k*57+11));
+    }
+    // ground cover: tall grass, flowers, bushes, mushrooms, wild crops (one block each, only on grass)
+    for(let lz=0;lz<CS;lz++)for(let lx=0;lx<CS;lx++){
+      const wx=cx*CS+lx, wz=cz*CS+lz, gh=hs[lz*CS+lx], ci=lz*CS+lx;
+      if(gh<=SEA_LEVEL+1||gh>47||d[gh*256+ci]!==B.GRASS||d[(gh+1)*256+ci]!==B.AIR||this.inSettle(wx,wz)) continue;
+      const r=this.hash(wx*7+3,wz*11+5); if(r>.09) continue;
+      const t=nz.fbm(wx*.0016+77,wz*.0016-40,2), m=nz.fbm(wx*.002-160,wz*.002+210,2), pf=nz.fbm(wx*.04+11,wz*.04-5,2), pb=nz.fbm(wx*.012+333,wz*.012+17,2), r2=this.hash(wx*13+7,wz*3+29);
+      let id=0;
+      if(pb>.27){ if(r<.07) id=NAT.wheat; }                                                // wheat fields
+      else if(pb<-.3&&t>-.1){ if(r<.012) id=r2<.5?blkByName('Pumpkin'):blkByName('Melon'); } // pumpkin and melon patches
+      else if(t<-.13){ if(r<.03) id=NAT.fern; else if(r<.036) id=r2<.5?NAT.bush.blueb:NAT.bush.bush; else if(r<.0375) id=NAT.mushB; else if(r<.044) id=NAT.plant['Snowdrop']||NAT.fern; }
+      else if(t>.14&&m>=-.05){ if(r<.04) id=r2<.5?NAT.grass:NAT.fern; else if(r<.047) id=NAT.plant['Orchid']; else if(r<.052) id=r2<.3?NAT.bush.pepper:r2<.6?NAT.bush.chili:NAT.bush.grapes; else if(r<.054) id=NAT.mushR; }
+      else if(t>.14){ if(r<.012) id=NAT.grass; else if(r<.02) id=NAT.plant['Marigold']; }
+      else { if(r<.05) id=NAT.grass;
+        else if(r<.066){ const k=Math.floor((pf+.5)*FLOWERS.length*1.0)%FLOWERS.length; id=NAT.flower[Math.max(0,Math.min(FLOWERS.length-1,k))]; }
+        else if(r<.074){ const bl=['bush','strawb','raspb','blackb','currant','goosb','blueb','tomato','cucumber'], k=bl[Math.floor(r2*bl.length)]; id=NAT.bush[k]; }
+        else if(r<.0765) id=m>0?NAT.mushR:NAT.mushB;
+        else if(r<.0795){ const cl=['carrotP','potatoP','onionP','garlicP','lettuceP','broccoliP','beansP','cornP','peanutP','spotP']; id=NAT[cl[Math.floor(r2*cl.length)]]; } }
+      if(id) d[(gh+1)*256+ci]=id;
     }
     this.carveMines(ch,d); const busyT=this.placeSettlements(ch,hs); if(!busyT) this.placeHouses(ch,hs); this.placeTreasures(ch,hs);
     // apply persisted player edits
@@ -3056,7 +3258,7 @@ function startGame(seedStr,mp){
 }
 
 // ---------- inventory / progress
-const START_INV={[HOUSES[0].id]:1,[I.TREAT]:5,[TNTS[0].id]:4,[250]:1,[249]:60,[B.DIRT]:32,[B.PLANKS]:24,[B.GLASS]:12,[B.LOG]:8,[B.COBBLE]:16,[B.BRICKS]:8,[B.GLOWSTONE]:4,[B.SAND]:16,[I.WOOD_PICK]:1};
+const START_INV={[HOUSES[0].id]:1,[I.TREAT]:5,[TNTS[0].id]:4,[250]:1,[249]:60,[B.DIRT]:32,[B.PLANKS]:24,[B.GLASS]:12,[B.LOG]:8,[B.COBBLE]:16,[B.BRICKS]:8,[B.GLOWSTONE]:4,[B.SAND]:16,[I.WOOD_PICK]:1,[F.apple]:6,[F.bread]:6,[F.water]:3};
 const START_HOTBAR=[I.WOOD_PICK,B.DIRT,B.PLANKS,B.COBBLE,B.GLASS,B.BRICKS,B.GLOWSTONE,B.LOG,250];
 const count=id=>(creative&&info(id))?Infinity:(inv[id]|0);
 const iconText=id=>ITEMS[id]?ITEMS[id].e:'▪';
@@ -3073,6 +3275,9 @@ function updateStats(){
     (fx.speed>0?'   🧪 '+Math.ceil(fx.speed)+'s':'')+(fx.jump>0?'   ⚗️ '+Math.ceil(fx.jump)+'s':'');
 }
 function dropsFor(id){
+  if(PLANTDROP[id]) return PLANTDROP[id]();
+  if(FRUITLEAF[id]){ const r=[[F[FRUITLEAF[id]],1+Math.floor(Math.random()*3)]]; if(Math.random()<.4) r.push([id,1]); return r; }
+  if(id===NAT.leaf.palm) return Math.random()<.35?[[F.coconut,1],[id,1]]:[[id,1]];
   if(HM.base[id]) return [[HM.base[id],1]];
   if(BLOCKS[id]&&BLOCKS[id].hidden) return [];
   if(DOOR_CLOSED[id]) return [[DOOR_CLOSED[id],1]];
@@ -3156,7 +3361,7 @@ function rightClick(first){
     if(HM.toggle[tid]){ world.setBlock(target.x,target.y,target.z,HM.toggle[tid]); sfx('click'); markProgress(); return; }
   }
   const id=hotbar[ui.sel]; if(!id) return;
-  if(ITEMS[id]){ if(first){ if(ITEMS[id].vehicle) placeVehicle(id); else if(ITEMS[id].house!==undefined) placeHouse(id); else if(ITEMS[id].street!==undefined) placeStreet(id); else if(ITEMS[id].bigtv!==undefined) placeBigTV(id); else if(ITEMS[id].mob!==undefined) placeMob(id); else if(ITEMS[id].bucket) useBucket(id); else useItem(id); } return; }
+  if(ITEMS[id]){ if(first){ if(ITEMS[id].food!==undefined) eatFood(id); else if(ITEMS[id].vehicle) placeVehicle(id); else if(ITEMS[id].house!==undefined) placeHouse(id); else if(ITEMS[id].street!==undefined) placeStreet(id); else if(ITEMS[id].bigtv!==undefined) placeBigTV(id); else if(ITEMS[id].mob!==undefined) placeMob(id); else if(ITEMS[id].bucket) useBucket(id); else useItem(id); } return; }
   tryPlace();
 }
 function aimDir(x,y){ const th=Math.tan(camera.fov*Math.PI/360); return new THREE.Vector3((x/innerWidth*2-1)*th*camera.aspect,-(y/innerHeight*2-1)*th,-1).applyQuaternion(camera.quaternion).normalize(); }
@@ -3315,6 +3520,13 @@ const INV_TABS=[
   {id:'b2roof',title:'Roof tiles (16)',icon:PCAT.roof2[1],ids:PCAT.roof2},
   {id:'b2stone',title:'Marble, stones & woods',icon:PCAT.marble2[0],ids:[...PCAT.marble2,...PCAT.stone2,...PCAT.wood2]},
   {id:'b2soft',title:'Sand, mud, ice, gel & turf',icon:PCAT.soft2[0],ids:[...PCAT.soft2,...PCAT.turf2]},
+  {id:'ntrees',title:'Trees: logs & leaves',icon:NAT.leaf.jungle,ids:NATTAB.trees},
+  {id:'nbush',title:'Bushes, flowers & grass',icon:NAT.bush.strawb,ids:NATTAB.bushes},
+  {id:'ncrops',title:'Crops',icon:NAT.wheat,ids:NATTAB.crops},
+  {id:'nfruit',title:'Fruit & vegetables',icon:F.apple,ids:NATTAB.fruit},
+  {id:'nmeals',title:'Meals & baking',icon:F.pizza,ids:NATTAB.meals},
+  {id:'nsweets',title:'Sweets & desserts',icon:F.bcake,ids:NATTAB.sweets},
+  {id:'ndrinks',title:'Drinks',icon:F.coffee,ids:NATTAB.drinks},
   {id:'tnt',title:'TNT (10 kinds)',icon:'💥',ids:TNTS.map(t=>t.id)},
   {id:'guns',title:'Guns & ammo',icon:'🔫',ids:[250,251,252,253,254,255,249]},
   {id:'bigtv',title:'Big TVs',icon:'📺',ids:BIGTV.map(t=>t.id)},
