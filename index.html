@@ -2313,7 +2313,7 @@ class World {
       for(let dy=-1;dy<=3;dy++)for(let dz=-2;dz<=2;dz++)for(let dx=-2;dx<=2;dx++){
         const inside=Math.abs(dx)<=1&&Math.abs(dz)<=1&&dy>=0&&dy<=2; put(lx+dx,y+dy,lz+dz,inside?B.AIR:B.BRICKS); }
       present(lx,y,lz); put(lx,y+2,lz,B.GLOWSTONE);
-    } else if(kind<0.9){                             // floating sky island
+    } else if(kind<0.9&&!this.nearAirport(cx*CS+lx,cz*CS+lz,60)){                             // floating sky island (never in an airport approach corridor)
       for(let dz=-3;dz<=3;dz++)for(let dx=-3;dx<=3;dx++){ if(dx*dx+dz*dz>8) continue;
         put(lx+dx,55,lz+dz,B.DIRT); put(lx+dx,56,lz+dz,B.DIRT); put(lx+dx,57,lz+dz,B.GRASS); }
       present(lx,58,lz);
@@ -2452,17 +2452,19 @@ class World {
         if(!ok) continue; let mn=99,mx=-99,sum=0,n=0;
         for(let x=X0;x<=X1&&ok;x+=12)for(let z=Z0;z<=Z1;z+=12){ const h=this.heightAt(x,z); if(h<=SEA_LEVEL+1){ ok=false; break; } mn=Math.min(mn,h); mx=Math.max(mx,h); sum+=h; n++; }
         if(!ok||mx-mn>8) continue; const y0=Math.max(SEA_LEVEL+2,Math.round(sum/n)); if(y0>CH-30) continue;
-        out={rx,rz,ax,az,HL,y0,X0,X1,Z0,Z1,n:c.n+' Airport'}; }
+        out={rx,rz,ax,az,HL,y0,X0,X1,Z0,Z1,ck:k,n:c.n+' Airport'}; }
     }
     this.apc.set(key,out); return out;
   }
+  nearAirport(x,z,m){ for(const a of this.apNear(Math.floor(x/192),Math.floor(z/192))) if(Math.abs(z-a.az)<=m&&x>=a.X0-340&&x<=a.X1+340) return true; return false; }
   apNear(rx,rz){
     if(!this.apn) this.apn=new Map(); const key=rx+','+rz; let l=this.apn.get(key); if(l) return l; l=[];
     for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){ const o=this.airportFor(rx+a,rz+b); if(o) l.push(o); } this.apn.set(key,l); return l;
   }
   groundH(x,z){
     const al=this.apNear(Math.floor(x/192),Math.floor(z/192));
-    if(al.length) for(const a of al){ const dd=Math.max(a.X0-x,x-a.X1,a.Z0-z,z-a.Z1); if(dd<=0) return a.y0; if(dd<9){ const h0=this.heightAt(x,z); return Math.round(a.y0+(h0-a.y0)*dd/9); } }
+    if(al.length) for(const a of al){ const dd=Math.max(a.X0-x,x-a.X1,a.Z0-z,z-a.Z1); if(dd<=0) return a.y0; if(dd<9){ const h0=this.heightAt(x,z); return Math.round(a.y0+(h0-a.y0)*dd/9); }
+      const cx=x<a.X0?a.X0-x:x>a.X1?x-a.X1:0; if(cx>0&&cx<=340&&Math.abs(z-a.az)<=40){ const lim=a.y0+3+cx*.1+Math.max(0,Math.abs(z-a.az)-14)*1.3, h0=this.heightAt(x,z); if(h0>lim) return Math.round(lim); } }   // approach corridors: hills and mountains are cut down to the glide path
     const h=this.heightAt(x,z), s=this.settleAt(x,z); if(!s) return h;
     const dd=Math.max(Math.abs(x-s.x),Math.abs(z-s.z)); if(dd<=s.R+1) return s.y0; if(dd>=s.R+9) return h;
     const t=(dd-s.R-1)/8; return Math.round(s.y0+(h-s.y0)*t);
@@ -2666,7 +2668,7 @@ class World {
       const wx=cx*CS+lx, wz=cz*CS+lz, hh=this.hash(wx,wz);
       if(hh>TREE_CHANCE*3.4) continue;
       if(this.inSettle(wx,wz)) continue;
-      { const al=this.apNear(Math.floor(wx/192),Math.floor(wz/192)); let near=false; for(const a of al) if(wx>=a.X0-8&&wx<=a.X1+8&&wz>=a.Z0-8&&wz<=a.Z1+8){ near=true; break; } if(near) continue; }
+      { const al=this.apNear(Math.floor(wx/192),Math.floor(wz/192)); let near=false; for(const a of al) if((wx>=a.X0-8&&wx<=a.X1+8&&wz>=a.Z0-8&&wz<=a.Z1+8)||(Math.abs(wz-a.az)<=32&&wx>=a.X0-330&&wx<=a.X1+330)){ near=true; break; } if(near) continue; }
       const inside=lx>=0&&lx<CS&&lz>=0&&lz<CS;
       const gh=inside?hs[lz*CS+lx]:this.groundH(wx,wz);
       const t=nz.fbm(wx*.0016+77,wz*.0016-40,2), m=nz.fbm(wx*.002-160,wz*.002+210,2), f=nz.fbm(wx*.01+333,wz*.01+17,2);
@@ -3509,7 +3511,8 @@ document.addEventListener('keydown',e=>{
   else if(e.code==='KeyE'){ if(document.activeElement===$('invsearch')) return; if(state==='playing'&&input.active()) openInventory(); else if(state==='inventory') closeInventory(); }
   else if(e.code==='Escape'&&state==='inventory') closeInventory();
   else if(e.code==='KeyR'&&state==='playing'&&input.active()) gunReload();
-  else if(e.code==='KeyP'&&state==='playing'&&input.active()){ view3=(view3+1)%3; ui.toast(['First-person view','Third-person view (behind you)','Third-person view (in front)'][view3]); }
+  else if(e.code==='KeyP'&&state==='playing'&&driving){ vCamCycle(); }
+  else if(e.code==='KeyP'&&state==='playing'){ view3=(view3+1)%3; ui.toast(['First-person view','Third-person view (behind you)','Third-person view (in front)'][view3]); }
   else if(e.code==='KeyT'&&NET.on&&state==='playing'&&input.active()){ e.preventDefault(); openChat(); }
 });
 // ---------- TV + computer (right-click them in the world)
@@ -3868,6 +3871,8 @@ function autoDef(c){ const k=((c||0)%CARS.length+CARS.length)%CARS.length, s=CAR
 const VDEF={ car:{max:24,accel:16,rev:7,steer:1.7,rad:1.05,len:1.9,build:buildCar,cam:6.5,camH:1.6,name:'Car'}, bike:{max:15,accel:12,rev:4,steer:2.4,rad:.5,len:.95,build:buildBike,cam:4.2,camH:1.5,name:'Bike'} };
 VDEF.auto=autoDef(0);
 let pendingStarters=null, vehicles=[], driving=null, vLookYaw=0, vLookPitch=0, vChase=true, vCamP=0.22, vHud=null, vPrompt=null;
+let vCamMode=0; const VCAMS=['Chase camera','Driver / cockpit camera','Far chase camera','Front camera (looking back)','Top-down camera','Side camera'];
+function vCamCycle(){ vCamMode=(vCamMode+1)%VCAMS.length; vChase=vCamMode!==1; ui.toast(VCAMS[vCamMode]+'  (V or P = next camera)'); }
 function addVehicle(t,x,y,z,yaw,c){
   const d=t==='boat'?boatDef(c||0):t==='auto'?autoDef(c||0):t==='liner'?linerDef(c||0):VDEF[t], m=d.build(VCOL[(c||0)%VCOL.length],c||0); scene.add(m.g);
   const v={t,d,m,x,y,z,yaw:yaw||0,c:c||0,speed:0,vy:0,steer:0,pitch:0,roll:0,spin:0,wet:false,air:false,thr:0,pt:0,hx:0,hz:0,rot:0};
@@ -4351,7 +4356,7 @@ function gpsRoadVia(sx,sz,tx,tz){
   pts.push([X.x,X.z]);
   return {pts,len:best<1e17?best+E.d+X.d:direct+E.d+X.d};
 }
-function aptTarget(a){ return {x:a.ax,z:a.az,n:a.n,apt:{ax:a.ax,az:a.az,HL:a.HL,y0:a.y0}}; }
+function aptTarget(a){ return {x:a.ax,z:a.az,n:a.n,apt:{ax:a.ax,az:a.az,HL:a.HL,y0:a.y0,ck:a.ck}}; }
 function nearestAirport(x,z){ let best=null,bd=1e18; const rx=Math.floor(x/192), rz=Math.floor(z/192); for(let a=-6;a<=6;a++)for(let b=-6;b<=6;b++){ const o=world.airportFor(rx+a,rz+b); if(!o) continue; const d=Math.hypot(o.ax-x,o.az-z); if(d<bd){ bd=d; best=o; } } return best; }
 function gpsPlan(targets,best){   // builds GPS.route from real targets; best=true also finds the shortest order
   const v=driving, me={x:v?v.x:player.pos.x,z:v?v.z:player.pos.z}, kind=gpsKind();
@@ -4361,8 +4366,8 @@ function gpsPlan(targets,best){   // builds GPS.route from real targets; best=tr
   for(let T of list){ let via=null, aptFix=null, roadUsed=false;
     if(kind==='air'&&v&&(v.t==='plane'||v.t==='liner')&&!T.apt&&!T.land&&T===list[list.length-1]){ const na=nearestAirport(T.x,T.z); if(na&&Math.hypot(na.ax-T.x,na.az-T.z)<700){ T=Object.assign({},T,aptTarget(na),{n:na.n+' (nearest to '+(T.n||'your pin')+')'}); if(ui&&ui.toast) ui.toast('GPS: landing at '+na.n+' - the nearest airport to your pin'); } }
     if(T.apt&&kind==='air'){ const a=T.apt, xw=a.ax-a.HL, xe=a.ax+a.HL, fW=[xw-860,a.az], fE=[xe+860,a.az];
-      const east=Math.hypot(fW[0]-cur[0],fW[1]-cur[1])<=Math.hypot(fE[0]-cur[0],fE[1]-cur[1]);   // land heading east from the west end, or west from the east end
-      aptFix=east?fW:fE; T=Object.assign({},T,{x:east?xw+60:xe-60,z:a.az,land:true}); via=[aptFix,[east?xw-560:xe+560,a.az]]; }
+      const east=a.ck===0?false:a.ck===1?true:Math.hypot(fW[0]-cur[0],fW[1]-cur[1])<=Math.hypot(fE[0]-cur[0],fE[1]-cur[1]);   // never approach over the city beside the airport   // land heading east from the west end, or west from the east end
+      aptFix=east?fW:fE; T=Object.assign({},T,{x:east?xw+60:xe-60,z:a.az,land:true}); via=[aptFix,[east?xw-560:xe+560,a.az]].filter(f=>east?!(cur[0]>f[0]-80&&cur[0]<xw-150):!(cur[0]<f[0]+80&&cur[0]>xe+150)); }
     else if(T.apt&&kind==='ground') T=Object.assign({},T,{x:T.apt.ax,z:T.apt.az+18});
     if(via===null) via=gpsPath(kind,cur[0],cur[1],T.x,T.z);
     if(kind==='ground'){ const rv=gpsRoadVia(cur[0],cur[1],T.x,T.z); if(rv){ let dl=Infinity; if(via!==null){ dl=0; let c=cur; for(const q of via){ dl+=Math.hypot(q[0]-c[0],q[1]-c[1]); c=q; } dl+=Math.hypot(T.x-c[0],T.z-c[1]); }
@@ -4550,7 +4555,7 @@ function vehKey(code){
   if(state!=='playing') return;
   if(gpsKey(code)) return;
   if(code==='KeyF'){ if(driving) exitVeh(); else { const v=nearestVeh(); if(v) enterVeh(v); } }
-  else if(code==='KeyV'&&driving){ vChase=!vChase; ui.toast(vChase?'Chase camera':'Driver camera'); }
+  else if(code==='KeyV'&&driving){ vCamCycle(); }
   else if(code==='KeyX'&&!driving){ const v=nearestVeh(); if(v) pickupVeh(v); }
 }
 
@@ -4596,7 +4601,7 @@ function apPlane(v,dt){
   const dx=nx.x-v.x, dz=nx.z-v.z, dist=Math.hypot(dx,dz); let tb=Math.atan2(-dx,-dz);
   if(nx.land&&dist<800){ const dirx=Math.sign(dx)||1, e=v.z-nx.z, k=clamp(dist/300,.2,1); tb=Math.atan2(-dirx,clamp(e*.012*k,-.6,.6)); }   // airport: line up with the runway centre line
   // standing on an airport: merge onto the runway centre line, take off straight along it, turn only once well airborne
-  if(!v.air&&AP.rw===undefined&&!AP.land){ AP.rw=null; const q=nearestAirport(v.x,v.z); if(q&&v.x>=q.X0&&v.x<=q.X1&&v.z>=q.Z0&&v.z<=q.Z1){ let dir=Math.sign(nx.x-v.x)||1; const rem=d2=>d2>0?q.ax+q.HL-v.x:v.x-(q.ax-q.HL); if(rem(dir)<150&&rem(-dir)>rem(dir)) dir=-dir; AP.rw={q,dir}; } }
+  if(!v.air&&AP.rw===undefined&&!AP.land){ AP.rw=null; const q=nearestAirport(v.x,v.z); if(q&&v.x>=q.X0&&v.x<=q.X1&&v.z>=q.Z0&&v.z<=q.Z1){ let dir=q.ck===0?1:q.ck===1?-1:(Math.sign(nx.x-v.x)||1); const rem=d2=>d2>0?q.ax+q.HL-v.x:v.x-(q.ax-q.HL); if(rem(dir)<150&&rem(-dir)>rem(dir)) dir=-dir; AP.rw={q,dir}; } }
   let rwHold=false;
   if(AP.rw){ const {q,dir}=AP.rw, G0=groundAt(v.x,v.z,v.y+2);
     if(v.air&&v.y-G0>=40){ AP.rw=null; }
@@ -4619,11 +4624,12 @@ function apPlane(v,dt){
   }
   // airborne
   AP.land=false;
-  const finalApproach=lastLeg&&dist<Math.max(120,(agl)*9+v.speed*4);
+  const ragl=(nx.land&&nx.apt&&dist>100)?v.y-(nx.apt.y0+1):agl;   // landing: glide path is measured from the runway, not from the trees under the plane
+  const finalApproach=lastLeg&&dist<Math.max(120,ragl*9+v.speed*4);
   if(finalApproach){
     // glide down: steeper when high, flare near the ground, hold a safe speed
-    let des=-clamp(agl/Math.max(dist,35),.03,nx.land?.27:.2); if(agl<7) des=agl<2.5?-.05:-.03; pitchTo(des);
-    thrTo(v.speed>stS+8?.05:.55); if(agl<3){ thrTo(0); } AP.land=agl<30;
+    let des=-clamp(ragl/Math.max(dist,35),.03,nx.land?.27:.2); if(agl<7) des=agl<2.5?-.05:-.03; if(nx.land&&dist>100&&agl<14) des=Math.max(des,.06); pitchTo(des);
+    thrTo(v.speed>stS+8?.05:.55); if(agl<3){ thrTo(0); } AP.land=(nx.land&&dist>150)?false:agl<30;
     if(v.speed<stS+2) pitchTo(0);
     s=-clamp(rel*1.6,-1,1); if(dist<70&&Math.abs(rel)>.7) s=0;
   } else {
@@ -4631,6 +4637,7 @@ function apPlane(v,dt){
     const maxUp=clamp((v.speed-stS-3)*.035,-.05,.22); pitchTo(Math.min((CR-v.y)*.014,maxUp)); if(v.speed<stS+3) pitchTo(-.02);
     thrTo(.9);
   }
+  if(nx.via&&!nx.land&&dist<70&&!lastLeg){ GPS.route.shift(); gpsBeacons(); return {f,s,dp,brake}; }   // approach fixes: pass them and carry on to the next one
   if(!finalApproach&&!nx.via&&dist<(v.t==='liner'?40:18)&&!lastLeg){ ui.toast('GPS: passed '+nx.n); GPS.route.shift(); gpsBeacons(); }
   return {f,s,dp,brake};
 }
@@ -4670,7 +4677,8 @@ function driveFrame(dt){
 function driveCam(){
   const v=driving, m=v.m, e=new THREE.Vector3();
   if(vChase){
-    const cy=v.yaw+vLookYaw, cp=((v.t==='plane'||v.t==='liner')?clamp(vCamP-v.pitch*0.5,-0.4,1.2):vCamP), dist=v.d.cam;
+    let cy=v.yaw+vLookYaw, cp=((v.t==='plane'||v.t==='liner')?clamp(vCamP-v.pitch*0.5,-0.4,1.2):vCamP), dist=v.d.cam; const cm=vCamMode;
+    if(cm===2){ dist*=2.3; cp=Math.max(cp,.3); } else if(cm===3){ cy+=Math.PI; cp=.18; dist*=1.15; } else if(cm===4){ cp=1.42; dist*=2.6; } else if(cm===5){ cy+=Math.PI/2; cp=.15; dist*=1.5; }
     const tgt=new THREE.Vector3(v.x,v.y+v.d.camH,v.z), dir=new THREE.Vector3(Math.sin(cy)*Math.cos(cp),Math.sin(cp),Math.cos(cy)*Math.cos(cp));
     let dd=dist; for(let t=0.6;t<=dist;t+=0.4){ const p=tgt.clone().addScaledVector(dir,t); if(isSolid(world.getBlock(Math.floor(p.x),Math.floor(p.y),Math.floor(p.z)))){ dd=Math.max(0.6,t-0.5); break; } }
     e.copy(tgt).addScaledVector(dir,dd); camera.position.copy(e); camera.rotation.set(-cp,cy,0);
