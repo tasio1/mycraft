@@ -1319,6 +1319,10 @@ NAT.mushB=plantBlock('bushes','Brown Mushroom',[[[7,0,7,9,5,9],MS],[[4,5,4,12,8,
 const WH=pkTile('flat',[220,190,80],{amt:14}), WHG=pkTile('flat',[170,170,60],{amt:12}), OR=pkTile('flat',[240,130,30],{amt:10}), PT=pkTile('flat',[200,170,100],{amt:10}), CN=pkTile('flat',[245,215,60],{amt:10}), RD=pkTile('flat',[225,50,40],{amt:8});
 NAT.wheat=plantBlock('crops','Wheat Plant',[[[1,0,1,3,13,3],WH],[[5,0,2,7,14,4],WHG],[[9,0,1,11,13,3],WH],[[13,0,2,15,14,4],WHG],[[2,0,7,4,14,9],WHG],[[7,0,6,9,13,8],WH],[[11,0,7,13,14,9],WHG],[[1,0,11,3,13,13],WH],[[5,0,12,7,14,14],WHG],[[9,0,11,11,13,13],WH],[[13,0,12,15,14,14],WHG]],WH,()=>[[F.wheat,2+Math.floor(Math.random()*2)],[NAT.wheat,1]],'wheat: break it to harvest');
 const crop=(key,name,top,fruitTile,fk,n)=>{ NAT[key]=plantBlock('crops',name,top,fruitTile,()=>[[F[fk],n||2],[NAT[key],1]],name+': break it to harvest'); };
+
+// ---- Airport TV: departure board block (placed in every airport terminal); right-click shows the departures from the nearest airport
+const AIRTV_T=pkTile("deptboard",[12,24,70]), AIRTV=1499; BLOCKS[AIRTV]={name:'Airport TV',tiles:[AIRTV_T,AIRTV_T,AIRTV_T],opaque:true,hard:.5,lit:true,desc:'right-click: departures board - book flights'}; (PCAT.airport=PCAT.airport||[]).push(AIRTV);
+RECIPES.push({out:AIRTV,n:1,in:[[I.IRON,2],[B.GLASS,2],[I.GOLD,1]]});
 crop('carrotP','Carrot Plant',[[[3,0,3,13,6,13],GR],[[6,6,6,10,10,10],GRL]],OR,'carrot',3);
 crop('potatoP','Potato Plant',[[[2,0,2,14,9,14],GRD],[[4,9,4,12,11,12],GR]],PT,'potato',3);
 crop('cornP','Corn Stalk',[[[6,0,6,10,16,10],GR],[[3,6,7,6,10,9],CN],[[10,8,7,13,12,9],CN]],CN,'corn',2);
@@ -1940,6 +1944,10 @@ const Textures = (() => {
     lantern:(t,c)=>each(t,(x,y)=>{ if(y<1||y>14||y%5===0||x<1||x>14) px(t,x,y,90,40,10); else { const k=1-Math.hypot(x-7.5,y-7.5)/14; noisy(t,x,y,[c[0]*(.85+k*.3),c[1]*(.85+k*.3),c[2]*(.8+k*.3)],5); } }),
     shroom:(t,c)=>each(t,(x,y)=>{ noisy(t,x,y,c,12); if(rnd()<.12) px(t,x,y,255,225,150); }),
     jack:(t,c)=>each(t,(x,y)=>{ const eye=((x>=3&&x<=6)||(x>=9&&x<=12))&&y>=4&&y<=7, mouth=y>=9&&y<=12&&x>=3&&x<=12&&!((y===9||y===12)&&(x%3===0)); if(eye||mouth) px(t,x,y,255,215,70); else noisy(t,x,y,x%4===0?[c[0]*.8,c[1]*.8,c[2]*.8]:c,6); }),
+    deptboard:(t,c)=>each(t,(x,y)=>{ if(x===0||y===0||x===15||y===15){ px(t,x,y,40,42,50); return; }
+      if(y>=1&&y<=3){ px(t,x,y,230,170,20); if(y===2&&(x%3===1||x===5||x===11)) px(t,x,y,90,50,0); return; }
+      const row=(y-5)%3===0&&y>=5&&y<=14; if(row){ const k=Math.floor((y-5)/3), col=k%2?[240,240,245]:[255,205,60]; const on=((x*7+k*5)%9)!==0&&x>=2&&x<=13; if(on&&x<9) px(t,x,y,col[0],col[1],col[2]); else if(on&&x>=10) px(t,x,y,120,230,140); else px(t,x,y,12,24,70); }
+      else px(t,x,y,12,24,70+((x+y)%2)*6); }),
     panel:(t,c)=>each(t,(x,y)=>{ if(x%8===0||y%8===0) px(t,x,y,215,210,190); else noisy(t,x,y,c,2); }),
     pole:(t,c)=>each(t,(x,y)=>{ const k=(x>=6&&x<=7)?1.18:(x>=9?.82:1); noisy(t,x,y,[c[0]*k,c[1]*k,c[2]*k],4); }),
 
@@ -2510,6 +2518,12 @@ class World {
         for(let h=1;h<=5;h++){ let id=B.AIR; if(edge){ id=B.STONE_BRICKS; if(dz===23&&h>=2&&h<=4&&((dx+30)%6)!==0) id=B.GLASS; if(dz===23&&dx>=-1&&dx<=1&&h<=3) id=B.AIR; } put(wx,y0+h,wz,id); }
         put(wx,y0+6,wz,(edge||(dx%10===0&&dz%5===0))?B.WOOL_WHITE:B.WOOL_WHITE); }
       for(let dx=-30;dx<=30;dx+=10) put(ax+dx,y0+4,az+28,B.LAMP);
+      // interior: departure boards on the back wall, airline desks with computers, seating
+      for(const dx of [-24,-16,-8,0,8,16,24]) for(let h=3;h<=4;h++){ put(ax+dx,y0+h,az+32,AIRTV); put(ax+dx+1,y0+h,az+32,AIRTV); }
+      for(let dx=-24;dx<=24;dx+=8){ put(ax+dx,y0+1,az+26,B.DESK); put(ax+dx+1,y0+1,az+26,B.DESK); put(ax+dx,y0+2,az+26,B.COMPUTER); put(ax+dx+1,y0+2,az+26,B.COMPUTER); put(ax+dx,y0+1,az+25,B.CHAIR); }
+      for(let dx=-27;dx<=27;dx+=3){ if(Math.abs(dx)<=3) continue; put(ax+dx,y0+1,az+30,B.SOFA); }
+      for(const dx of [-28,28]) put(ax+dx,y0+1,az+24,B.PLANT);
+      put(ax+2,y0+3,az+23,AIRTV); put(ax-3,y0+3,az+23,AIRTV);
       // control tower
       for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){ for(let h=1;h<=13;h++) put(ax+38+dx,y0+h,az+27+dz,(dx===0&&dz===0)?B.AIR:B.IRON_BLOCK); }
       for(let dz=-3;dz<=3;dz++)for(let dx=-3;dx<=3;dx++){ put(ax+38+dx,y0+14,az+27+dz,B.WOOL_WHITE); for(let h=15;h<=16;h++) put(ax+38+dx,y0+h,az+27+dz,(Math.max(Math.abs(dx),Math.abs(dz))===3)?B.GLASS:B.AIR); put(ax+38+dx,y0+17,az+27+dz,B.WOOL_WHITE); }
@@ -3423,6 +3437,7 @@ function rightClick(first){
     const tid=world.getBlock(target.x,target.y,target.z);
     if(TNT_BY[tid]){ igniteTNT(target.x,target.y,target.z); markProgress(); return; }
     if(isDoor(tid)){ toggleDoor(target.x,target.y,target.z); return; }
+    if(tid===AIRTV){ openComputer('board'); return; }
     if(isTV(tid)){ tvInteract(target.x,target.y,target.z,tid); return; }
     if(HM.ftv[tid]){ ftvInteract(target.x,target.y,target.z,tid); return; }
     if(BLOCKS[tid]&&/\(screen part\)$/.test(BLOCKS[tid].name)){ tvChannel=(tvChannel+1)%TVCH.length; ui.feed('Big screen - '+tvLabel()); animT=1; return; }
@@ -3510,10 +3525,11 @@ function tickAnim(dt){
   Textures.tvPaint(tvChannel,animFrame); Textures.compPaint(Math.floor(animFrame/3)%2);
 }
 let compApp='', snakeTimer=null, snake=null;
-function openComputer(){
+function openComputer(app){
   if(state!=='playing') return;
   state='computer'; input.reset(); ui.screen('computer'); $('cclock').textContent=new Date().toTimeString().slice(0,5);
   if(document.pointerLockElement) document.exitPointerLock();
+  if(typeof app==='string') openApp(app);
 }
 function closeComputer(){ if(state!=='computer') return; stopSnake(); state='playing'; ui.screen(null); lockPointer(); }
 $('cclose').onclick=closeComputer;
@@ -3540,6 +3556,7 @@ function openApp(app){
     t.oninput=()=>{ try{ localStorage.setItem(key,t.value); }catch(e){} }; box.appendChild(t); t.focus();
   } else if(app==='calc') buildCalc(box);
   else if(app==='flights') buildFlights(box);
+  else if(app==='board') buildBoard(box);
 }
 /* ---- FLIGHT BOOKING: airlines, fares in gold, an airliner takes you from one airport to another on autopilot ---- */
 const AIRLINES=[
@@ -3571,6 +3588,17 @@ function buildFlights(box){
       const b=document.createElement('button'); b.textContent=(creative?'Book (free)':'Book - '+fare+' gold'); b.disabled=!have; b.style.cssText='padding:6px 10px;font:bold 14px sans-serif;cursor:pointer'; if(!have) b.title='You need '+fare+' gold bars';
       b.onclick=()=>bookFlight(al,k,A,Z,fare); c.appendChild(b); list.appendChild(c); }); };
   sf.onchange=st.onchange=render; render();
+}
+function buildBoard(box){
+  const aps=airportsNear(player.pos.x,player.pos.z); box.style.alignItems='stretch'; box.style.overflow='auto'; box.style.background='#0c1846'; box.style.color='#ffd23f';
+  if(aps.length<2){ box.innerHTML='<div class="chint" style="color:#9ab">No other airports found near you yet.</div>'; return; }
+  const A=aps[0], now=new Date(), h0=now.getHours()*60+now.getMinutes(), hh=(a)=>String(Math.floor(a/60)%24).padStart(2,'0')+':'+String(a%60).padStart(2,'0');
+  box.innerHTML='<div style="font:bold 20px monospace;margin-bottom:6px">&#9992; DEPARTURES &middot; '+A.n.toUpperCase()+'</div><div style="font:12px monospace;color:#9fc4ff;display:grid;grid-template-columns:52px 74px 1fr 78px 92px;gap:4px;margin-bottom:4px"><span>TIME</span><span>FLIGHT</span><span>DESTINATION</span><span>GATE</span><span></span></div>';
+  aps.slice(1,9).forEach((Z,i)=>{ const al=AIRLINES[Math.floor(Math.abs(Math.sin((A.ax+Z.ax)*.013+Z.az*.007+i))*1e4)%AIRLINES.length], dist=Math.hypot(A.ax-Z.ax,A.az-Z.az), fare=fareFor(al,dist);
+    const r=document.createElement('div'); r.style.cssText='font:15px monospace;display:grid;grid-template-columns:52px 74px 1fr 78px 92px;gap:4px;align-items:center;padding:3px 0;border-top:1px solid #23378a;color:'+(i%2?'#fff':'#ffd23f');
+    r.innerHTML='<span>'+hh(h0+10+i*14)+'</span><span>'+al.code+(100+(Math.floor(dist)%880))+'</span><span>'+Z.n.replace(' Airport','').toUpperCase()+' <small style="color:#7fe08a">'+al.n+'</small></span><span>'+(i===0?'<b style="color:#7fe08a">BOARDING</b>':'Gate '+String.fromCharCode(65+i%4)+(1+i))+'</span>';
+    const b=document.createElement('button'); b.textContent=creative?'Book':fare+' gold'; b.style.cssText='padding:3px 6px;font:bold 12px sans-serif;cursor:pointer'; b.disabled=!creative&&count(I.GOLD)<fare; b.onclick=()=>bookFlight(al,AIRLINES.indexOf(al),A,Z,fare); r.appendChild(b); box.appendChild(r); });
+  const more=document.createElement('div'); more.style.cssText='margin-top:10px;font:12px sans-serif;color:#9fc4ff'; more.textContent='More airlines and every airport: open the Flights app on any computer.'; box.appendChild(more);
 }
 function bookFlight(al,k,A,Z,fare){
   const pd=Math.hypot(player.pos.x-A.ax,player.pos.z-A.az);
@@ -3658,7 +3686,7 @@ const INV_TABS=[
   {id:'neon',title:'Neon & lights',icon:PCAT.light[1],ids:PCAT.light},
   {id:'houses',title:'Houses & landmarks (41)',icon:HOUSES[0].id,ids:HOUSES.map(h=>h.id)},
   {id:'doors',title:'Doors',icon:DOORS[0].id,ids:DOORS.map(d=>d.id)},
-  {id:'tech',title:'TVs, computers & laptops',icon:B.COMPUTER,ids:[...TVM.map(m=>m.off),...CPM.map(m=>m.id),...LPM.map(m=>m.id),...HM.ftvs]},
+  {id:'tech',title:'TVs, computers & laptops',icon:B.COMPUTER,ids:[...TVM.map(m=>m.off),...CPM.map(m=>m.id),...LPM.map(m=>m.id),...HM.ftvs,AIRTV]},
   {id:'furniture',title:'Furniture',icon:B.SOFA,ids:[B.SOFA,B.BED,B.TABLE,B.DESK,B.CHAIR,B.CABINET,B.FRIDGE,B.STOVE,B.CARPET,B.PLANT,B.PIANO,B.BOOKSHELF,B.LAMP,B.TV_OFF,B.TV_ON,B.COMPUTER,...HM.sofas,...HM.beds]},
   {id:'home2',title:'Lamps, elevators & laptops',icon:HM.lamps[0],ids:[...HM.lamps,HM.elev,...HM.laps]},
   {id:'ladders',title:'Ladders',icon:HM.ladders[0],ids:HM.ladders},
