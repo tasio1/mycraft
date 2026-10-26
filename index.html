@@ -3595,13 +3595,15 @@ function buildFlights(box){
 function buildBoard(box){
   const aps=airportsNear(player.pos.x,player.pos.z); box.style.alignItems='stretch'; box.style.overflow='auto'; box.style.background='#0c1846'; box.style.color='#ffd23f';
   if(aps.length<2){ box.innerHTML='<div class="chint" style="color:#9ab">No other airports found near you yet.</div>'; return; }
-  const A=aps[0], now=new Date(), h0=now.getHours()*60+now.getMinutes(), hh=(a)=>String(Math.floor(a/60)%24).padStart(2,'0')+':'+String(a%60).padStart(2,'0');
-  box.innerHTML='<div style="font:bold 20px monospace;margin-bottom:6px">&#9992; DEPARTURES &middot; '+A.n.toUpperCase()+'</div><div style="font:12px monospace;color:#9fc4ff;display:grid;grid-template-columns:52px 74px 1fr 78px 92px;gap:4px;margin-bottom:4px"><span>TIME</span><span>FLIGHT</span><span>DESTINATION</span><span>GATE</span><span></span></div>';
-  aps.slice(1,9).forEach((Z,i)=>{ const al=AIRLINES[Math.floor(Math.abs(Math.sin((A.ax+Z.ax)*.013+Z.az*.007+i))*1e4)%AIRLINES.length], dist=Math.hypot(A.ax-Z.ax,A.az-Z.az), fare=fareFor(al,dist);
-    const r=document.createElement('div'); r.style.cssText='font:15px monospace;display:grid;grid-template-columns:52px 74px 1fr 78px 92px;gap:4px;align-items:center;padding:3px 0;border-top:1px solid #23378a;color:'+(i%2?'#fff':'#ffd23f');
-    r.innerHTML='<span>'+hh(h0+10+i*14)+'</span><span>'+al.code+(100+(Math.floor(dist)%880))+'</span><span>'+Z.n.replace(' Airport','').toUpperCase()+' <small style="color:#7fe08a">'+al.n+'</small></span><span>'+(i===0?'<b style="color:#7fe08a">BOARDING</b>':'Gate '+String.fromCharCode(65+i%4)+(1+i))+'</span>';
-    const b=document.createElement('button'); b.textContent=creative?'Book':fare+' gold'; b.style.cssText='padding:3px 6px;font:bold 12px sans-serif;cursor:pointer'; b.disabled=!creative&&count(I.GOLD)<fare; b.onclick=()=>bookFlight(al,AIRLINES.indexOf(al),A,Z,fare); r.appendChild(b); box.appendChild(r); });
-  const more=document.createElement('div'); more.style.cssText='margin-top:10px;font:12px sans-serif;color:#9fc4ff'; more.textContent='More airlines and every airport: open the Flights app on any computer.'; box.appendChild(more);
+  const A=aps[0], nowMs=Date.now(), hh=ms=>{ const d=new Date(ms); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
+  box.innerHTML='<div style="font:bold 20px monospace;margin-bottom:6px">&#9992; DEPARTURES &middot; '+A.n.toUpperCase()+'</div><div style="font:12px monospace;color:#9fc4ff;display:grid;grid-template-columns:52px 74px 1fr 92px 92px;gap:4px;margin-bottom:4px"><span>TIME</span><span>FLIGHT</span><span>DESTINATION</span><span>STATUS</span><span></span></div>';
+  const n0=Math.floor((nowMs-apOff(A))/SCHED); let rows=0;
+  for(let i=0;i<9&&rows<8;i++){ const f=flightFor(A,n0+i-0); if(!f) continue; const dtm=f.t0-nowMs; if(dtm<-45000) continue; const Z=f.Z, al=f.al, dist=Math.hypot(A.ax-Z.ax,A.az-Z.az), fare=fareFor(al,dist);
+    const st=dtm<0?'<b style="color:#ff8a65">DEPARTED</b>':dtm<40000?'<b style="color:#7fe08a">BOARDING</b>':'Gate '+String.fromCharCode(65+rows%4)+(1+rows);
+    const r=document.createElement('div'); r.style.cssText='font:15px monospace;display:grid;grid-template-columns:52px 74px 1fr 92px 92px;gap:4px;align-items:center;padding:3px 0;border-top:1px solid #23378a;color:'+(rows%2?'#fff':'#ffd23f');
+    r.innerHTML='<span>'+hh(f.t0)+'</span><span>'+f.no+'</span><span>'+Z.n.replace(' Airport','').toUpperCase()+' <small style="color:#7fe08a">'+al.n+'</small></span><span>'+st+'</span>';
+    const b=document.createElement('button'); b.textContent=creative?'Book':fare+' gold'; b.style.cssText='padding:3px 6px;font:bold 12px sans-serif;cursor:pointer'; b.disabled=!creative&&count(I.GOLD)<fare; b.onclick=()=>bookFlight(al,AIRLINES.indexOf(al),A,Z,fare); r.appendChild(b); box.appendChild(r); rows++; }
+  const more=document.createElement('div'); more.style.cssText='margin-top:10px;font:12px sans-serif;color:#9fc4ff'; more.textContent='Planes take off on this timetable - watch them from outside. Book any flight here or in the Flights app (any computer).'; box.appendChild(more);
 }
 function bookFlight(al,k,A,Z,fare){
   const pd=Math.hypot(player.pos.x-A.ax,player.pos.z-A.az);
@@ -4738,7 +4740,42 @@ function airportParking(dt){
     parkedAp.set(key,list); }
   for(const [key,list] of parkedAp){ const [ax,az]=key.split(',').map(Number); if(Math.hypot(ax-player.pos.x,az-player.pos.z)>1100){ for(const v of list){ const i=vehicles.indexOf(v); if(i>=0&&v!==driving){ scene.remove(v.m.g); vehicles.splice(i,1); } } parkedAp.delete(key); } }
 }
-function vehTick(dt){  airportParking(dt); if(pendingStarters&&world.isLoaded(pendingStarters.x,pendingStarters.z)){ spawnStarters(pendingStarters); pendingStarters=null; } for(const v of vehicles) if(v!==driving) vstep(v,dt,null); vehUI(dt); }
+/* ---- SCHEDULED TRAFFIC: every airport has a departure every 3 minutes (real clock). The plane rolls down the runway, climbs, flies to the destination airport and lands there; the departures board shows the same timetable ---- */
+const SCHED=180000, apDest=new Map(), traffic=new Map(); let trafT=0;
+const apOff=A=>Math.abs(Math.floor(A.ax*7+A.az*13))%SCHED;
+function apDests(A){ let l=apDest.get(A.ax+','+A.az); if(!l){ l=airportsNear(A.ax,A.az).filter(o=>o!==A).slice(0,6); apDest.set(A.ax+','+A.az,l); } return l; }
+function flightFor(A,n){
+  const h=i=>{ const x=Math.sin(A.ax*12.9898+A.az*78.233+n*37.719+i*4.581)*43758.5453; return x-Math.floor(x); };
+  const L=apDests(A); if(!L.length) return null; const Z=L[Math.floor(h(1)*L.length)], k=Math.floor(h(2)*AIRLINES.length), al=AIRLINES[k];
+  return {A,Z,al,k,t0:n*SCHED+apOff(A),no:al.code+(100+Math.floor(h(3)*890)),key:A.ax+','+A.az+'#'+n};
+}
+function flightPlan(f){
+  if(f.segs) return f; const A=f.A, Z=f.Z, y0a=A.y0+1+LINERS[f.al.liner].gh+.3, y0z=Z.y0+1+LINERS[f.al.liner].gh+.3, CRZ=Math.max(A.y0,Z.y0)+95;
+  const dA=A.ck===0?1:A.ck===1?-1:(Math.sign(Z.ax-A.ax)||1), ld=Z.ck===0?-1:Z.ck===1?1:(A.ax<Z.ax?1:-1);
+  const S=[A.ax-dA*(A.HL-14),A.az], R1=[S[0]+dA*170,A.az], P1=[S[0]+dA*770,A.az], T=Z.ax-ld*Z.HL, F=[T-ld*650,Z.az], Td=[T+ld*40,Z.az], Re=[Td[0]+ld*110,Z.az];
+  const cr=Math.max(3,Math.hypot(F[0]-P1[0],F[1]-P1[1])/62);
+  f.segs=[{d:10,a:S,b:R1,ya:y0a,yb:y0a,ease:'in'},{d:12,a:R1,b:P1,ya:y0a,yb:CRZ,ease:'sm'},{d:cr,a:P1,b:F,ya:CRZ,yb:CRZ},{d:13,a:F,b:Td,ya:CRZ,yb:y0z,ease:'sm'},{d:8,a:Td,b:Re,ya:y0z,yb:y0z,ease:'out'}];
+  f.total=f.segs.reduce((q,g)=>q+g.d,0)*1000; return f; }
+function flightPos(f,tau){   // tau seconds since departure
+  let t=tau; for(const g of f.segs){ if(t<=g.d){ let u=t/g.d; if(g.ease==='in') u=u*u; else if(g.ease==='out') u=1-(1-u)*(1-u); else if(g.ease==='sm') u=u*u*(3-2*u);
+    return [g.a[0]+(g.b[0]-g.a[0])*u,g.ya+(g.yb-g.ya)*u,g.a[1]+(g.b[1]-g.a[1])*u,g]; } t-=g.d; }
+  const g=f.segs[f.segs.length-1]; return [g.b[0],g.yb,g.b[1],g]; }
+function trafficTick(dt){
+  if(!world||!player) return; trafT-=dt;
+  const now=Date.now();
+  if(trafT<=0){ trafT=.6;
+    for(const A of airportsNear(player.pos.x,player.pos.z)){ if(Math.hypot(A.ax-player.pos.x,A.az-player.pos.z)>2600) continue;
+      const n=Math.floor((now-apOff(A))/SCHED), f=flightFor(A,n); if(!f||traffic.has(f.key)) continue; flightPlan(f); if(now-f.t0>f.total) continue;
+      const pos=flightPos(f,(now-f.t0)/1000); if(Math.hypot(pos[0]-player.pos.x,pos[2]-player.pos.z)>650) continue;
+      const lin=LINERS[f.al.liner], m=linerDef(f.al.liner).build(parseInt(f.al.col.slice(1),16),f.al.liner); m.g.rotation.order='YXZ'; scene.add(m.g); f.m=m; f.yaw=null; traffic.set(f.key,f); } }
+  for(const [key,f] of traffic){ const tau=(now-f.t0)/1000;
+    if(now-f.t0>f.total||Math.hypot(f.m.g.position.x-player.pos.x,f.m.g.position.z-player.pos.z)>1100&&tau>1){ scene.remove(f.m.g); traffic.delete(key); continue; }
+    const p=flightPos(f,Math.max(0,tau)), q=flightPos(f,Math.max(0,tau)+.4), hx=q[0]-p[0], hz=q[2]-p[2], hy=q[1]-p[1], hs=Math.hypot(hx,hz);
+    if(hs>.01){ const ty=Math.atan2(-hx,-hz); if(f.yaw===null) f.yaw=ty; else { let dd=Math.atan2(Math.sin(ty-f.yaw),Math.cos(ty-f.yaw)); f.yaw+=dd*Math.min(1,dt*2.5); } }
+    const pitch=hs>.01?Math.atan2(hy,hs):0; f.pt=(f.pt||0)+(pitch-(f.pt||0))*Math.min(1,dt*3);
+    f.m.g.position.set(p[0],p[1],p[2]); f.m.g.rotation.set(f.pt,f.yaw||0,0); if(f.m.fans) for(const fn of f.m.fans) fn.rotation.z+=dt*30; if(f.m.prop) f.m.prop.rotation.z+=dt*40; }
+}
+function vehTick(dt){  airportParking(dt); trafficTick(dt); if(pendingStarters&&world.isLoaded(pendingStarters.x,pendingStarters.z)){ spawnStarters(pendingStarters); pendingStarters=null; } for(const v of vehicles) if(v!==driving) vstep(v,dt,null); vehUI(dt); }
 
 
 // =====================================================================
