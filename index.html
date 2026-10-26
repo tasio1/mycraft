@@ -3304,7 +3304,7 @@ function saveFlash(){ const e=$('savei'); if(!e) return; e.style.opacity=1; clea
 function doSave(silent){
   if(!world) return;
   if(world.mp){ try{ localStorage.setItem(mpInvKey(),JSON.stringify({inv,hot:hotbar,found,fx})); }catch(e){} if(!silent) ui.toast('Your items are saved (the shared world belongs to the host)'); lastSave=performance.now(); return; }
-  const ok=world.save({p:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch,fly:player.flying},t:timeOfDay,ts:Date.now(),slot:ui.sel,gm:gunMag,inv,hot:hotbar,found,fx,pets:petSave(),riv:rivalSave(),veh:vehicles.map(v=>({t:v.t,x:v.x,y:v.y,z:v.z,yaw:v.yaw,c:v.c})),bed:bedSpawn});
+  const ok=world.save({p:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch,fly:player.flying},t:timeOfDay,ts:Date.now(),slot:ui.sel,gm:gunMag,inv,hot:hotbar,found,fx,pets:petSave(),riv:rivalSave(),veh:vehicles.filter(v=>!v.parked).map(v=>({t:v.t,x:v.x,y:v.y,z:v.z,yaw:v.yaw,c:v.c})),bed:bedSpawn});
   if(!silent) ui.toast(ok?'World saved':'Save failed (storage full?)');
   lastSave=performance.now();
   if(ok&&ACCT&&CLOUD.ready) cloudPush(world.seedStr,!silent);
@@ -3336,7 +3336,7 @@ function startGame(seedStr,mp){
   if(saved){ if(saved.inv) inv=saved.inv; if(saved.hot) hotbar=saved.hot; found=saved.found|0; if(saved.fx) fx=saved.fx; gunMag=saved.gm||{}; }
   ui.select(saved&&saved.slot!=null?saved.slot:0); updateStats();
   const mi=mineInfo(); $('mineinfo').textContent=mi; ui.feed(mi); ui.feed('Presents are hidden all over the world: dig, build, explore! Houses full of TVs, computers and furniture are scattered around. Press E for inventory.');
-  for(const v of vehicles) scene.remove(v.m.g); vehicles=[]; driving=null; pendingStarters=null;
+  for(const v of vehicles) scene.remove(v.m.g); vehicles=[]; parkedAp.clear(); driving=null; pendingStarters=null;
   clearMobs(); hp=MAXHP; mobInit={pets:saved&&saved.pets||null,riv:saved&&saved.riv||null}; updateHearts();
   bedSpawn=(saved&&saved.bed)||null; if(player) player.sitting=null;
   if(saved&&saved.veh&&!mp){ for(const v of saved.veh) if(VDEF[v.t]) addVehicle(v.t,v.x,v.y+0.3,v.z,v.yaw,v.c); }
@@ -4239,7 +4239,7 @@ function placeBoat(id){
 }
 function vstep(v,dt,ctl){ if(v.t==='boat') boatStep(v,dt,ctl); else if(v.t==='plane'||v.t==='liner') planeStep(v,dt,ctl); else if(v.t==='heli') heliStep(v,dt,ctl); else vehStep(v,dt,ctl); }
 function nearestVeh(maxD){
-  let best=null,bd=1e9; for(const v of vehicles){ const dd=Math.hypot(v.x-player.pos.x,v.z-player.pos.z), lim=Math.max(maxD||4.5,v.t==='boat'?(v.d.len+v.d.rad+1.5):v.t==='liner'?(v.d.exit+v.d.len*.8):0); if(dd<lim&&dd<bd&&Math.abs(v.y-player.pos.y)<3.5){ bd=dd; best=v; } } return best;
+  let best=null,bd=1e9; for(const v of vehicles){ if(v.parked) continue; const dd=Math.hypot(v.x-player.pos.x,v.z-player.pos.z), lim=Math.max(maxD||4.5,v.t==='boat'?(v.d.len+v.d.rad+1.5):v.t==='liner'?(v.d.exit+v.d.len*.8):0); if(dd<lim&&dd<bd&&Math.abs(v.y-player.pos.y)<3.5){ bd=dd; best=v; } } return best;
 }
 function enterVeh(v){
   driving=v; vLookYaw=vLookPitch=0; player.flying=false; player.vel.set(0,0,0); input.mdx=input.mdy=0;
@@ -4698,7 +4698,7 @@ function vehUI(dt){
   if(state!=='playing'){ vHud.style.display=vPrompt.style.display='none'; gpsUI(null); return; }
   gpsUI(driving);
   if(driving){ vHud.style.display='block'; const pl=driving.t==='plane'||driving.t==='liner', he=driving.t==='heli'; vHud.innerHTML=Math.round(Math.abs(driving.speed)*3.6)+' <small style="font-size:12px">km/h</small>'+(he?'<br>ALT '+Math.round(driving.y):'')+(pl?'<br>ALT '+Math.round(driving.y)+' <small style="font-size:12px">THR '+Math.round(driving.thr*100)+'%</small>'+(driving.speed<STALL+1&&driving.air?'<br><span style="color:#ff6b6b;font-size:14px">STALL</span>':''):'')+'<br><small style="font-size:11px;font-weight:400">'+(pl?'W/S throttle · mouse/↑↓ pitch · A/D bank · Space brake · V cam · F exit':he?'Space up · C/Z down · W/S move · A/D turn · V cam · F exit':driving.t==='boat'?'W/S throttle · A/D steer · Space brake · Shift boost · V cam · F exit':'F exit · V camera')+'</small>'; vPrompt.style.display='none'; }
-  else { vHud.style.display='none'; const n=nearestVeh(); if(n){ vPrompt.style.display='block'; vPrompt.textContent='F  drive the '+n.d.name.toLowerCase()+'   ·   X  pick up'; } else vPrompt.style.display='none'; }
+  else { vHud.style.display='none'; const n=nearestVeh(); const pk=!n&&vehicles.find(q=>q.parked&&Math.hypot(q.x-player.pos.x,q.z-player.pos.z)<q.d.len*.8+6); if(pk){ vPrompt.style.display='block'; vPrompt.textContent='Airline plane - not for flying. Book a flight on the Airport TV or any computer (Flights)'; } else if(n){ vPrompt.style.display='block'; vPrompt.textContent='F  drive the '+n.d.name.toLowerCase()+'   ·   X  pick up'; } else vPrompt.style.display='none'; }
 }
 function clearSpot(cx,cz,gy,skip,sep,rmax,hs){
   hs=hs===undefined?3:hs;
@@ -4727,7 +4727,18 @@ function spawnStarters(s){
     if(!p){ p=[s.x+8+k*7,s.z+30]; py=gy+14; }
     taken.push(p); addVehicle('heli',p[0],py,p[1],k*0.6,k); }
 }
-function vehTick(dt){  if(pendingStarters&&world.isLoaded(pendingStarters.x,pendingStarters.z)){ spawnStarters(pendingStarters); pendingStarters=null; } for(const v of vehicles) if(v!==driving) vstep(v,dt,null); vehUI(dt); }
+// ---- planes parked at airports are scenery: they cannot be entered or steered; only the plane you book (Flights app / Airport TV) flies
+const parkedAp=new Map(); let parkT=0;
+function airportParking(dt){
+  parkT-=dt; if(parkT>0||!world||!player) return; parkT=1.5;
+  const near=airportsNear(player.pos.x,player.pos.z).filter(a=>Math.hypot(a.ax-player.pos.x,a.az-player.pos.z)<460);
+  for(const a of near){ const key=a.ax+','+a.az; if(parkedAp.has(key)) continue;
+    if(!world.isLoaded(a.ax,a.az+15)) continue; const list=[], vars=[5,0,7,5], xs=[-38,-12,14,40];
+    for(let i=0;i<4;i++){ const x=a.ax+xs[i]+.5, z=a.az+14.5; if(vehicles.some(v=>Math.hypot(v.x-x,v.z-z)<8)) continue; const v=addVehicle("liner",x,a.y0+1+LINERS[vars[i]].gh+.3,z,0,vars[i]); v.parked=true; list.push(v); }
+    parkedAp.set(key,list); }
+  for(const [key,list] of parkedAp){ const [ax,az]=key.split(',').map(Number); if(Math.hypot(ax-player.pos.x,az-player.pos.z)>1100){ for(const v of list){ const i=vehicles.indexOf(v); if(i>=0&&v!==driving){ scene.remove(v.m.g); vehicles.splice(i,1); } } parkedAp.delete(key); } }
+}
+function vehTick(dt){  airportParking(dt); if(pendingStarters&&world.isLoaded(pendingStarters.x,pendingStarters.z)){ spawnStarters(pendingStarters); pendingStarters=null; } for(const v of vehicles) if(v!==driving) vstep(v,dt,null); vehUI(dt); }
 
 
 // =====================================================================
