@@ -1424,6 +1424,12 @@ const WMAT={wood:{c:0x8a5a2b,css:'sepia(1) saturate(2)'},stone:{c:0x8d8d90,css:'
  ['Wooden Spear','spear','wood',6,6,.75,1.3,'\u{1F531}',[[B.PLANKS,4]]],['Iron Spear','spear','iron',9,6.4,.7,1.4,'\u{1F531}',[[I.IRON,1],[B.PLANKS,3]]],['Diamond Spear','spear','diamond',12,6.8,.65,1.5,'\u{1F531}',[[I.DIAMOND,1],[I.IRON,1],[B.PLANKS,3]]]
 ].forEach((d,i)=>{ const id=1100+i, M=WMAT[d[2]]; WEAP[id]={id,n:d[0],kind:d[1],mat:d[2],dmg:d[3],reach:d[4],cd:d[5],kb:d[6]}; WEAPON_IDS.push(id);
   ITEMS[id]={name:d[0],e:d[7],css:M.css,desc:d[1]==='spear'?'long reach thrust - '+d[3]+' dmg':d[1]==='knife'?'fast stab - '+d[3]+' dmg':'slash - '+d[3]+' dmg'}; RECIPES.push({out:id,n:1,in:d[8]}); });
+// ---- throwing spears (ids 1112..1117): left-click throws one; it flies in an arc, sticks in blocks, and can be picked up again
+const TSPEARS=[['Wooden Throwing Spear','wood',7,0,'\u{1F531}',[[B.PLANKS,2],[I.COAL,1]]],['Stone Throwing Spear','stone',9,0,'\u{1F531}',[[B.COBBLE,2],[B.PLANKS,1]]],['Iron Throwing Spear','iron',12,0,'\u{1F531}',[[I.IRON,1],[B.PLANKS,2]]],
+  ['Gold Throwing Spear','gold',10,0,'\u{1F531}',[[I.GOLD,1],[B.PLANKS,2]]],['Diamond Throwing Spear','diamond',17,0,'\u{1F531}',[[I.DIAMOND,1],[B.PLANKS,2]]],['Explosive Spear','iron',10,1,'\u{1F4A5}',[[I.IRON,1],[B.PLANKS,2],[Object.keys(TNT_BY)[0]|0,1]]]];
+const TSPEAR_IDS=[];
+TSPEARS.forEach((d,i)=>{ const id=1112+i, M=WMAT[d[1]]; WEAP[id]={id,n:d[0],kind:'tspear',mat:d[1],dmg:d[2],reach:0,cd:.55,kb:1,fire:d[3]}; WEAPON_IDS.push(id); TSPEAR_IDS.push(id);
+  ITEMS[id]={name:d[0],e:d[4],css:d[3]?'hue-rotate(-30deg) saturate(3)':M.css,desc:'left-click to THROW - '+d[2]+' dmg'+(d[3]?', explodes on impact':'')+'. Walk over it to pick it up again'}; RECIPES.push({out:id,n:2,in:d[5]}); });
 // home recipes
 { const G=[[I.IRON,1],[B.GLASS,1],[B.GLOWSTONE,1]];
   HM.lamps.forEach((id,i)=>{ const k=LAMPDEF[i][2]; RECIPES.push({out:id,n:1,in:k==='chand'?[[I.IRON,3],[B.GLASS,2],[B.GLOWSTONE,3]]:k==='floor'?[[I.IRON,2],[B.GLASS,1],[B.GLOWSTONE,1]]:G}); });
@@ -3434,6 +3440,7 @@ function updateInteraction(dt){
   target=raycast(world,e.x,e.y,e.z,d.x,d.y,d.z,REACH);
   mobTarget=pickMob(true);
   if(heldGun()){ hlMesh.visible=false; crackMesh.visible=false; breakProg=0; breakKey=''; gunTick(dt); return; }
+  { const _tw=heldWeapon(); if(_tw&&_tw.kind==='tspear'){ hlMesh.visible=false; crackMesh.visible=false; breakProg=0; breakKey=''; return; } }
   if(target&&!mobTarget){ hlMesh.visible=true; hlMesh.position.set(target.x+.5,target.y+.5,target.z+.5); } else hlMesh.visible=false;
   breakCooldown-=dt; placeCooldown-=dt;
   // hold left mouse: accumulate break progress on the targeted block (pickaxes speed this up)
@@ -5426,6 +5433,47 @@ document.addEventListener('keydown',e=>{ if(e.repeat||state!=='playing'||driving
 // melee viewmodel
 let meleeSwing=0, meleeId=0, meleePrev=false; const meleeModels={};
 const heldWeapon=()=>(state==='playing'&&!driving)?WEAP[hotbar[ui.sel]]||null:null;
+let throwCd=0; const spears=[], UPV=new THREE.Vector3(0,1,0);
+function buildSpearMesh(W){ const M=WMAT[W.mat], g=new THREE.Group(), col=c=>new THREE.MeshLambertMaterial({color:c});
+  const sh=new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,1.5,8),col(0x7a4d22)); g.add(sh);
+  const tip=new THREE.Mesh(new THREE.ConeGeometry(.07,.3,8),col(W.fire?0xff5522:M.c)); tip.position.y=.9; g.add(tip);
+  const wrap=new THREE.Mesh(new THREE.CylinderGeometry(.032,.032,.12,8),col(W.fire?0x222222:0x8a2f2f)); wrap.position.y=.6; g.add(wrap);
+  for(const a of [0,Math.PI/2]){ const f=new THREE.Mesh(new THREE.BoxGeometry(.012,.22,.14),col(0xeeeeee)); f.position.y=-.62; f.rotation.y=a; g.add(f); }
+  return g; }
+function throwSpear(id){
+  const W=WEAP[id]; if(!creative){ if(!(inv[id]>0)) return; inv[id]--; ui.renderHotbar(); }
+  const e=player.eye(), d=player.dir(), m=buildSpearMesh(W), sp=46;
+  const S={id,W,m,x:e.x+d.x*.7,y:e.y+d.y*.7-.12,z:e.z+d.z*.7,vx:d.x*sp+player.vel.x*.4,vy:d.y*sp+player.vel.y*.2,vz:d.z*sp+player.vel.z*.4,stuck:false,t:0,ox:player.pos.x,oz:player.pos.z};
+  m.position.set(S.x,S.y,S.z); scene.add(m); spears.push(S); if(spears.length>40) killSpear(spears[0]); sfx('slash'); }
+function killSpear(S){ scene.remove(S.m); const i=spears.indexOf(S); if(i>=0) spears.splice(i,1); }
+function spearBoom(S){ blast(S.x,S.y,S.z,2.3,{dmg:S.W.dmg+4,kb:1.8,col:0xff7733,vis:3}); killSpear(S); }
+function spearTick(dt){
+  for(const S of spears.slice()){
+    S.t+=dt;
+    if(S.stuck){
+      if(S.t>300){ killSpear(S); continue; }
+      if(S.t-S.st>.5&&Math.hypot(S.x-player.pos.x,S.y-player.pos.y-.9,S.z-player.pos.z)<2.4){ if(!creative) addItem(S.id,1,true); killSpear(S); sfx('click'); }
+      continue; }
+    const steps=Math.max(1,Math.ceil(dt/.012)), h=dt/steps; let done=false;
+    for(let k=0;k<steps&&!done;k++){
+      S.vy-=22*h; const px=S.x, py=S.y, pz=S.z; S.x+=S.vx*h; S.y+=S.vy*h; S.z+=S.vz*h;
+      const bid=world.getBlock(Math.floor(S.x),Math.floor(S.y),Math.floor(S.z));
+      if(bid===B.WATER){ S.vx*=.93; S.vy*=.93; S.vz*=.93; }
+      if(isSolid(bid)){
+        const l=Math.hypot(S.vx,S.vy,S.vz)||1; S.x=px; S.y=py; S.z=pz;
+        if(S.W.fire){ spearBoom(S); done=true; break; }
+        if(TNT_BY[bid]) igniteTNT(Math.floor(S.x+S.vx/l),Math.floor(S.y+S.vy/l),Math.floor(S.z+S.vz/l),.5);
+        S.x+=S.vx/l*.5; S.y+=S.vy/l*.5; S.z+=S.vz/l*.5; S.stuck=true; S.st=S.t; S.vx=S.vy=S.vz=0; particles.burst(Math.floor(S.x+S.vx),Math.floor(S.y),Math.floor(S.z),bid); done=true; break; }
+      if(S.vx||S.vz){ for(const m of mobs){ if(m.d.pet) continue; const r=Math.max(.45,m.w*.62)+.15;
+        if(Math.abs(S.x-m.x)<r&&Math.abs(S.z-m.z)<r&&S.y>m.y-.1&&S.y<m.y+m.h+.1){
+          if(S.W.fire){ spearBoom(S); done=true; break; }
+          const head=S.y>m.y+m.h*.8, sp=Math.hypot(S.vx,S.vy,S.vz); damageMob(m,S.W.dmg*(head?1.5:1)*Math.min(1.2,.5+sp/60),S.ox,S.oz,.5); hitT=.18; if(head) ui.feed('Headshot!');
+          S.vx=S.vz=0; S.vy=Math.min(S.vy,0)*.3; S.hitM=true; break; } } if(done) break; }
+      if(S.y<-20){ killSpear(S); done=true; } }
+    if(done||!spears.includes(S)) { if(spears.includes(S)){ S.m.position.set(S.x,S.y,S.z); } continue; }
+    const v=new THREE.Vector3(S.vx,S.vy,S.vz); if(v.lengthSq()>.01) S.m.quaternion.setFromUnitVectors(UPV,v.normalize()); else S.m.quaternion.setFromUnitVectors(UPV,new THREE.Vector3(.2,-1,.1).normalize());
+    S.m.position.set(S.x,S.y,S.z); }
+}
 function buildMelee(id){ const W=WEAP[id], M=WMAT[W.mat], g=new THREE.Group();
   const box=(w,h,l,x,y,z,c)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,l),new THREE.MeshLambertMaterial({color:new THREE.Color(c).multiplyScalar(.7)})); m.position.set(x,y,z); g.add(m); return m; };
   const cyl=(r,l,x,y,z,c)=>{ const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,l,10),new THREE.MeshLambertMaterial({color:new THREE.Color(c).multiplyScalar(.7)})); m.position.set(x,y,z); g.add(m); return m; };
@@ -5439,6 +5487,9 @@ function meleeView(dt,W){
   const id=hotbar[ui.sel]; gunRoot.visible=true;
   if(meleeId!==id){ while(gunRig.children.length) gunRig.remove(gunRig.children[0]); meleeModels[id]=meleeModels[id]||buildMelee(id); gunRig.add(meleeModels[id]); meleeId=id; gunModelId=0; }
   gunRoot.position.copy(camera.position); gunRoot.quaternion.copy(camera.quaternion);
+  if(W.kind==='tspear'){ throwCd=Math.max(0,throwCd-dt); const dn=input.buttons[0]; if(dn&&throwCd<=0&&(creative||inv[id]>0)){ throwSpear(id); throwCd=W.cd; meleeSwing=1; } else if(dn&&throwCd<=0&&!creative&&!(inv[id]>0)&&!meleePrev) ui.toast('Out of spears'); meleePrev=dn;
+    meleeSwing=Math.max(0,meleeSwing-dt/.35); meleeModels[id].visible=throwCd<=.12||meleeSwing<=0&&throwCd<=0; const ps=Math.hypot(player.vel.x,player.vel.z); gunBob+=dt*(player.onGround?ps*1.6:0); const sw=meleeSwing>0?Math.sin((1-meleeSwing)*Math.PI):0;
+    gunRig.position.set(.3+Math.sin(gunBob)*.012,-.34-Math.abs(Math.cos(gunBob))*.01+sw*.05,-.42-sw*.3); gunRig.rotation.set(-1.15+sw*.9,.15,-.05); return; }
   const down=input.buttons[0]; if(down&&(!meleePrev||meleeSwing<=0)&&meleeSwing<=0){ meleeSwing=1; sfx('slash'); } meleePrev=down;
   meleeSwing=Math.max(0,meleeSwing-dt/Math.max(.16,W.cd*.9));
   const sp=Math.hypot(player.vel.x,player.vel.z); gunBob+=dt*(player.onGround?sp*1.6:0); const bx=Math.sin(gunBob)*.012, by=Math.abs(Math.cos(gunBob))*.01;
@@ -5492,7 +5543,7 @@ function frame(now){
     player.yaw+=((input.key('ArrowLeft')?1:0)-(input.key('ArrowRight')?1:0))*dt*2.2; player.pitch=clamp(player.pitch+((input.key('ArrowUp')?1:0)-(input.key('ArrowDown')?1:0))*dt*1.6,-1.55,1.55);
     player.update(dt,input);
     } else driveFrame(dt);
-    vehTick(dt); mobTick(dt); gunFx(dt); tntTick(dt);
+    vehTick(dt); mobTick(dt); gunFx(dt); tntTick(dt); spearTick(dt);
     world.setCenter(player.pos.x,player.pos.z); world.stream(driving&&driving.air?MESH_BUDGET_MS*2.5:MESH_BUDGET_MS);
     let e; if(driving) e=driveCam(); else { e=player.eye(); camera.position.copy(e); camera.rotation.set(player.pitch,player.yaw,0);
       if(view3){ const d=player.dir(), sg=view3===1?-1:1, h=raycast(world,e.x,e.y,e.z,d.x*sg,d.y*sg,d.z*sg,4.2), dist=h?Math.max(.5,h.t-.35):4; camera.position.set(e.x+d.x*sg*dist,e.y+d.y*sg*dist,e.z+d.z*sg*dist); if(view3===2) camera.rotation.set(-player.pitch,player.yaw+Math.PI,0); } }
