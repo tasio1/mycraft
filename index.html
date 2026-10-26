@@ -312,6 +312,7 @@
         <div class="cicon" data-app="snake">&#128013;<span>Snake</span></div>
         <div class="cicon" data-app="notes">&#128221;<span>Notes</span></div>
         <div class="cicon" data-app="calc">&#129518;<span>Calculator</span></div>
+        <div class="cicon" data-app="flights">&#9992;&#65039;<span>Flights</span></div>
       </div>
       <div id="capp"><div class="chint">Double-click... just click an app on the left.<br>Esc closes the computer.</div></div>
     </div>
@@ -3538,6 +3539,51 @@ function openApp(app){
     try{ t.value=localStorage.getItem(key)||''; }catch(e){}
     t.oninput=()=>{ try{ localStorage.setItem(key,t.value); }catch(e){} }; box.appendChild(t); t.focus();
   } else if(app==='calc') buildCalc(box);
+  else if(app==='flights') buildFlights(box);
+}
+/* ---- FLIGHT BOOKING: airlines, fares in gold, an airliner takes you from one airport to another on autopilot ---- */
+const AIRLINES=[
+  {n:'Polar Wings',col:'#1e88e5',liner:0,per:.9,base:1,note:'Regional jet - cheap and friendly',code:'PW'},
+  {n:'Aurora Air',col:'#43a047',liner:1,per:1.1,base:2,note:'Narrow-body jet - the everyday choice',code:'AU'},
+  {n:'Budget Sky',col:'#7cb342',liner:9,per:.7,base:1,note:'No frills, lowest fares',code:'BS'},
+  {n:'NordJet',col:'#546e7a',liner:8,per:1.6,base:3,note:'Nordic airliner - comfortable and fast',code:'NJ'},
+  {n:'Olekhum Airways',col:'#c62828',liner:2,per:2.0,base:4,note:'Wide-body twinjet - long-haul comfort',code:'OA'},
+  {n:'Golden Dune',col:'#f9a825',liner:10,per:3.0,base:6,note:'Super-jumbo - first class, the best way to fly',code:'GD'}];
+function airportsNear(x,z){ const out=[], rx=Math.floor(x/192), rz=Math.floor(z/192); for(let a=-10;a<=10;a++)for(let b=-10;b<=10;b++){ const o=world.airportFor(rx+a,rz+b); if(o) out.push(o); } out.sort((p,q)=>Math.hypot(p.ax-x,p.az-z)-Math.hypot(q.ax-x,q.az-z)); return out; }
+function fareFor(al,dist){ return creative?0:Math.max(1,Math.round(al.base+dist/400*al.per)); }
+function buildFlights(box){
+  const aps=airportsNear(player.pos.x,player.pos.z); box.style.alignItems='stretch'; box.style.overflow='auto';
+  if(aps.length<2){ box.innerHTML='<div class="chint">No airline network yet - fewer than two airports found near you.<br>Explore towards big cities; airports sit beside them.</div>'; return; }
+  const H=t=>{ const e=document.createElement('div'); e.innerHTML=t; return e; };
+  const lab=a=>a.n+' ('+Math.round(Math.hypot(a.ax-player.pos.x,a.az-player.pos.z))+' blocks away)';
+  const sel=(id)=>{ const e=document.createElement('select'); e.id=id; e.style.cssText='font:15px sans-serif;padding:4px;margin:0 8px 6px 0;max-width:46%'; aps.forEach((a,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=lab(a); e.appendChild(o); }); return e; };
+  const head=H('<b>✈️ Book a flight</b> <span style="color:#555">- pick where from and where to, then an airline. Fares are paid in gold bars'+(creative?' (free in creative)':'')+'. You can fly in a window seat or take the controls.</span>'); head.style.marginBottom='8px'; box.appendChild(head);
+  const row=document.createElement('div'); row.style.marginBottom='8px'; row.appendChild(H('From&nbsp;')); const sf=sel('flfrom'), st=sel('flto'); row.appendChild(sf); row.appendChild(H('To&nbsp;')); row.appendChild(st); box.appendChild(row);
+  const ai=aps.findIndex(a=>/^Albvig/.test(a.n)), si=aps.findIndex(a=>/^Skovstad/.test(a.n)), nearD=Math.hypot(aps[0].ax-player.pos.x,aps[0].az-player.pos.z);
+  if(si>=0&&ai>=0&&nearD>260){ sf.value=si; st.value=ai; } else { sf.value=0; st.value=ai>0?ai:1; }
+  const list=document.createElement('div'); box.appendChild(list); const ticket=document.createElement('div'); box.appendChild(ticket);
+  const render=()=>{ list.innerHTML=''; const A=aps[+sf.value], Z=aps[+st.value];
+    if(A===Z){ list.innerHTML='<div class="chint">Pick two different airports.</div>'; return; }
+    const dist=Math.hypot(A.ax-Z.ax,A.az-Z.az);
+    AIRLINES.forEach((al,k)=>{ const fare=fareFor(al,dist), mins=Math.max(1,Math.round(dist/(al.liner===1||al.liner===9?30:36)/60*10)/10), have=count(I.GOLD)>=fare;
+      const c=document.createElement('div'); c.style.cssText='display:flex;align-items:center;gap:10px;background:#fff;border:2px solid '+al.col+';border-radius:6px;padding:6px 10px;margin:4px 0';
+      c.innerHTML='<div style="width:34px;height:34px;border-radius:50%;background:'+al.col+';color:#fff;font:bold 13px sans-serif;display:flex;align-items:center;justify-content:center">'+al.code+'</div><div style="flex:1"><b>'+al.n+'</b> <span style="color:#555">&middot; '+LINERS[al.liner].n+'</span><br><small style="color:#555">'+al.note+' &middot; ~'+mins+' min &middot; '+Math.round(dist)+' blocks</small></div>';
+      const b=document.createElement('button'); b.textContent=(creative?'Book (free)':'Book - '+fare+' gold'); b.disabled=!have; b.style.cssText='padding:6px 10px;font:bold 14px sans-serif;cursor:pointer'; if(!have) b.title='You need '+fare+' gold bars';
+      b.onclick=()=>bookFlight(al,k,A,Z,fare); c.appendChild(b); list.appendChild(c); }); };
+  sf.onchange=st.onchange=render; render();
+}
+function bookFlight(al,k,A,Z,fare){
+  const pd=Math.hypot(player.pos.x-A.ax,player.pos.z-A.az);
+  closeComputer();
+  if(pd>260){ ui.toast('Ticket needs you at '+A.n+' - '+Math.round(pd)+' blocks away. GPS set to the airport; use the Flights app again when you are there'); gpsPlan([aptTarget(A)],false); return; }
+  if(!creative){ if(count(I.GOLD)<fare){ ui.toast('Not enough gold for the fare ('+fare+')'); return; } inv[I.GOLD]-=fare; ui.renderHotbar(); }
+  const dir=Math.sign(Z.ax-A.ax)||1, x=A.ax-dir*(A.HL-16)+.5, z=A.az+.5, y=Math.max(world.groundH(Math.floor(x),Math.floor(z)),A.y0)+LINERS[al.liner].gh+.3;
+  for(const v of vehicles.slice()){ if(Math.hypot(v.x-x,v.z-z)<30&&v!==driving){ scene.remove(v.m.g); vehicles.splice(vehicles.indexOf(v),1); } }
+  const v=addVehicle('liner',x,y,z,dir>0?-Math.PI/2:Math.PI/2,al.liner); v.flight=true; enterVeh(v);
+  GPS.stops=[]; GPS.home=null; gpsPlan([aptTarget(Z)],false);
+  AP.on=false; apToggle();
+  const fl=al.code+(100+Math.floor(Math.random()*890)); ui.toast('Flight '+fl+' - '+al.n+' to '+Z.n+'. Boarding complete, take-off on autopilot. O or the controls take over');
+  markProgress();
 }
 function startSnake(){
   stopSnake(); snake={body:[[10,10],[9,10],[8,10]],dx:1,dy:0,nd:[1,0],food:[15,10],score:0,over:false};
@@ -4285,6 +4331,7 @@ function gpsPlan(targets,best){   // builds GPS.route from real targets; best=tr
   const list=best&&targets.length>1?gpsOrder(me,targets,GPS.home&&targets[targets.length-1]===GPS.home):targets;
   const route=[]; let cur=[me.x,me.z], total=0, miss=0;
   for(let T of list){ let via=null, aptFix=null, roadUsed=false;
+    if(kind==='air'&&v&&(v.t==='plane'||v.t==='liner')&&!T.apt&&!T.land&&T===list[list.length-1]){ const na=nearestAirport(T.x,T.z); if(na&&Math.hypot(na.ax-T.x,na.az-T.z)<700){ T=Object.assign({},T,aptTarget(na),{n:na.n+' (nearest to '+(T.n||'your pin')+')'}); if(ui&&ui.toast) ui.toast('GPS: landing at '+na.n+' - the nearest airport to your pin'); } }
     if(T.apt&&kind==='air'){ const a=T.apt, xw=a.ax-a.HL, xe=a.ax+a.HL, fW=[xw-860,a.az], fE=[xe+860,a.az];
       const east=Math.hypot(fW[0]-cur[0],fW[1]-cur[1])<=Math.hypot(fE[0]-cur[0],fE[1]-cur[1]);   // land heading east from the west end, or west from the east end
       aptFix=east?fW:fE; T=Object.assign({},T,{x:east?xw+60:xe-60,z:a.az,land:true}); via=[aptFix,[east?xw-560:xe+560,a.az]]; }
@@ -4490,7 +4537,7 @@ function apToggle(){
   if(AP.on){ AP.on=false; ui.toast('Autopilot off'); return; }
   if(!GPS.route.length){ const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(t.length) gpsPlan(t,true); }
   if(!GPS.route.length){ ui.toast('Autopilot: pick a destination first (M = map, tap a spot, Go here)'); return; }
-  AP.on=true; AP.stuck=0; AP.rev=0; AP.ph=0; ui.toast(v.t==='heli'?'Autopilot ON - lifts off, flies the route and lands at the last pin. Keys or O take over':apAir(v)?'Autopilot ON - takes off, flies the route and lands at the last pin (pick flat ground). Mouse/keys or O take over':'Autopilot ON - W/A/S/D or Space takes over, O turns it off');
+  AP.on=true; AP.stuck=0; AP.rev=0; AP.ph=0; AP.rw=undefined; AP.taxi=false; ui.toast(v.t==='heli'?'Autopilot ON - lifts off, flies the route and lands at the last pin. Keys or O take over':apAir(v)?'Autopilot ON - takes off, flies the route and lands at the last pin (pick flat ground). Mouse/keys or O take over':'Autopilot ON - W/A/S/D or Space takes over, O turns it off');
 }
 function apCtl(v,dt){
   // overshot a road waypoint (turned too wide): drop it once we are past it and close, so the car never U-turns for it
@@ -4520,6 +4567,12 @@ function apPlane(v,dt){
   if(!nx){ AP.on=false; ui.toast('Autopilot: no route'); return {f:0,s:0,dp:0,brake:true}; }
   const dx=nx.x-v.x, dz=nx.z-v.z, dist=Math.hypot(dx,dz); let tb=Math.atan2(-dx,-dz);
   if(nx.land&&dist<800){ const dirx=Math.sign(dx)||1, e=v.z-nx.z, k=clamp(dist/300,.2,1); tb=Math.atan2(-dirx,clamp(e*.012*k,-.6,.6)); }   // airport: line up with the runway centre line
+  // standing on an airport: merge onto the runway centre line, take off straight along it, turn only once well airborne
+  if(!v.air&&AP.rw===undefined&&!AP.land){ AP.rw=null; const q=nearestAirport(v.x,v.z); if(q&&v.x>=q.X0&&v.x<=q.X1&&v.z>=q.Z0&&v.z<=q.Z1){ let dir=Math.sign(nx.x-v.x)||1; const rem=d2=>d2>0?q.ax+q.HL-v.x:v.x-(q.ax-q.HL); if(rem(dir)<150&&rem(-dir)>rem(dir)) dir=-dir; AP.rw={q,dir}; } }
+  let rwHold=false;
+  if(AP.rw){ const {q,dir}=AP.rw, G0=groundAt(v.x,v.z,v.y+2);
+    if(v.air&&v.y-G0>=40){ AP.rw=null; }
+    else { const dz0=q.az-v.z; if(Math.abs(dz0)>2.5){ const ah=Math.max(30,Math.abs(dz0)*2.5); tb=Math.atan2(-dir*ah,-dz0); } else tb=Math.atan2(-dir,clamp((v.z-q.az)*.08,-.45,.45)); rwHold=true; } }
   const rel=Math.atan2(Math.sin(tb-v.yaw),Math.cos(tb-v.yaw));
   const lastLeg=!GPS.route.some((q,i)=>i>0&&!q.via), G=groundAt(v.x,v.z,v.y+2), agl=v.y-G;
   let f=0, s=-clamp(rel*1.6,-1,1), dp=0, brake=false;
@@ -4530,6 +4583,7 @@ function apPlane(v,dt){
       brake=true; f=-1; s=0; if(Math.abs(v.speed)<1.2){ AP.on=false; AP.land=false; GPS.route=[]; gpsBeacons(); ui.toast('Autopilot: landed'); }
       return {f,s,dp:0,brake};
     }
+    if(rwHold){ const al=Math.abs(rel)<.2&&Math.abs(v.z-AP.rw.q.az)<4; if(Math.abs(rel)>.45&&v.speed<9) thrTo(.3); else thrTo(1); if(al&&v.speed>toS+2) pitchTo(.28); else dp=0; return {f,s:-clamp(rel*2,-1,1),dp,brake:false}; }
     // line up (slow roll) then full power and rotate
     if(Math.abs(rel)>.4&&v.speed<9){ thrTo(.3); } else { thrTo(1); s=Math.abs(v.speed)<toS*.5?s*.4:0; }
     if(v.speed>toS+2) pitchTo(.28); else dp=0;
@@ -4545,6 +4599,7 @@ function apPlane(v,dt){
     if(v.speed<stS+2) pitchTo(0);
     s=-clamp(rel*1.6,-1,1); if(dist<70&&Math.abs(rel)>.7) s=0;
   } else {
+    if(rwHold){ s=-clamp(rel*2,-1,1); }
     const maxUp=clamp((v.speed-stS-3)*.035,-.05,.22); pitchTo(Math.min((CR-v.y)*.014,maxUp)); if(v.speed<stS+3) pitchTo(-.02);
     thrTo(.9);
   }
