@@ -4359,14 +4359,14 @@ function gpsRoadVia(sx,sz,tx,tz){
   return {pts,len:best<1e17?best+E.d+X.d:direct+E.d+X.d};
 }
 function aptTarget(a){ return {x:a.ax,z:a.az,n:a.n,apt:{ax:a.ax,az:a.az,HL:a.HL,y0:a.y0,ck:a.ck}}; }
-function nearestAirport(x,z){ let best=null,bd=1e18; const rx=Math.floor(x/192), rz=Math.floor(z/192); for(let a=-6;a<=6;a++)for(let b=-6;b<=6;b++){ const o=world.airportFor(rx+a,rz+b); if(!o) continue; const d=Math.hypot(o.ax-x,o.az-z); if(d<bd){ bd=d; best=o; } } return best; }
+function nearestAirport(x,z){ let best=null,bd=1e18; const rx=Math.floor(x/192), rz=Math.floor(z/192); for(let a=-12;a<=12;a++)for(let b=-12;b<=12;b++){ const o=world.airportFor(rx+a,rz+b); if(!o) continue; const d=Math.hypot(o.ax-x,o.az-z); if(d<bd){ bd=d; best=o; } } return best; }
 function gpsPlan(targets,best){   // builds GPS.route from real targets; best=true also finds the shortest order
   const v=driving, me={x:v?v.x:player.pos.x,z:v?v.z:player.pos.z}, kind=gpsKind();
   if(!targets.length){ GPS.route=[]; gpsBeacons(); return; }
   const list=best&&targets.length>1?gpsOrder(me,targets,GPS.home&&targets[targets.length-1]===GPS.home):targets;
   const route=[]; let cur=[me.x,me.z], total=0, miss=0;
   for(let T of list){ let via=null, aptFix=null, roadUsed=false;
-    if(kind==='air'&&v&&(v.t==='plane'||v.t==='liner')&&!T.apt&&!T.land&&T===list[list.length-1]){ const na=nearestAirport(T.x,T.z); if(na&&Math.hypot(na.ax-T.x,na.az-T.z)<700){ T=Object.assign({},T,aptTarget(na),{n:na.n+' (nearest to '+(T.n||'your pin')+')'}); if(ui&&ui.toast) ui.toast('GPS: landing at '+na.n+' - the nearest airport to your pin'); } }
+    if(kind==='air'&&v&&(v.t==='plane'||v.t==='liner')&&!T.apt&&!T.land&&T===list[list.length-1]){ const na=nearestAirport(T.x,T.z); if(na){ T=Object.assign({},T,aptTarget(na),{n:na.n+' (nearest to '+(T.n||'your pin')+')'}); if(ui&&ui.toast) ui.toast('GPS: planes land at airports only - landing at '+na.n+', the nearest airport to your pin ('+Math.round(Math.hypot(na.ax-T.x,na.az-T.z))+' blocks away)'); } }
     if(T.apt&&kind==='air'){ const a=T.apt, xw=a.ax-a.HL, xe=a.ax+a.HL, fW=[xw-860,a.az], fE=[xe+860,a.az];
       const east=a.ck===0?false:a.ck===1?true:Math.hypot(fW[0]-cur[0],fW[1]-cur[1])<=Math.hypot(fE[0]-cur[0],fE[1]-cur[1]);   // never approach over the city beside the airport   // land heading east from the west end, or west from the east end
       aptFix=east?fW:fE; T=Object.assign({},T,{x:east?xw+60:xe-60,z:a.az,land:true}); via=[aptFix,[east?xw-560:xe+560,a.az]].filter(f=>east?!(cur[0]>f[0]-80&&cur[0]<xw-150):!(cur[0]<f[0]+80&&cur[0]>xe+150)); }
@@ -4571,6 +4571,7 @@ function apToggle(){
   if(!apKind(v)){ ui.toast('Autopilot works in cars, bikes, boats, airplanes and helicopters'); return; }
   if(AP.on){ AP.on=false; ui.toast('Autopilot off'); return; }
   if(!GPS.route.length){ const t=[...GPS.stops]; if(GPS.home) t.push(GPS.home); if(t.length) gpsPlan(t,true); }
+  if(apAir(v)&&GPS.route.length&&!GPS.route.some(q=>q.land)){ const fin=[...GPS.route].reverse().find(q=>!q.via); if(fin) gpsPlan([{x:fin.x,z:fin.z,n:fin.n&&fin.n!=='turn'?fin.n:'Pin'}],false); }   // a route made on foot ends at the pin: planes re-plan it to the nearest airport
   if(!GPS.route.length){ ui.toast('Autopilot: pick a destination first (M = map, tap a spot, Go here)'); return; }
   AP.on=true; AP.stuck=0; AP.rev=0; AP.ph=0; AP.rw=undefined; AP.taxi=false; ui.toast(v.t==='heli'?'Autopilot ON - lifts off, flies the route and lands at the last pin. Keys or O take over':apAir(v)?'Autopilot ON - takes off, flies the route and lands at the last pin (pick flat ground). Mouse/keys or O take over':'Autopilot ON - W/A/S/D or Space takes over, O turns it off');
 }
