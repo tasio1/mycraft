@@ -4654,10 +4654,10 @@ function apHeli(v,dt){
   const landing=lastLeg&&dist<14;
   let wantY=landing?G:CR;
   if(!landing&&v.y<CR-35&&dist>20) f=0; else f=clamp(dist/50,.2,1)*clamp(1-Math.abs(rel)/.9,0,1);   // climb first, then fly
-  if(landing){ f=clamp(dist/20,0,.4)*clamp(1-Math.abs(rel)/.9,0,1); if(dist<3) f=0; wantY=dist<5?G-1:G+8; }
+  if(landing){ f=clamp(dist/20,0,.4)*clamp(1-Math.abs(rel)/.9,0,1); if(dist<3) f=0; wantY=dist<9?G-1:G+8; if(dist<10) s=0; }   // over the landing spot: stop steering (the bearing is noise there and made the helicopter spin)
   if(v.y<wantY-1.5) up=1; else if(v.y>wantY+1.5) up=-1;
   if(!nx.via&&!lastLeg&&dist<18){ ui.toast('GPS: passed '+nx.n); GPS.route.shift(); gpsBeacons(); }
-  if(landing&&!v.air&&dist<8){ AP.on=false; GPS.route=[]; gpsBeacons(); ui.toast('Autopilot: landed'); return {f:0,s:0,brake:false,down:true}; }
+  if(landing&&!v.air&&dist<12){ AP.on=false; GPS.route=[]; gpsBeacons(); ui.toast('Autopilot: landed'); return {f:0,s:0,brake:false,down:true}; }
   return {f,s,brake:up>0,down:up<0};
 }
 function driveFrame(dt){
