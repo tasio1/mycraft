@@ -1156,8 +1156,13 @@ const HELIS=[
   {n:'Army Helicopter',body:0x4b5d3a,acc:0x2e3a26,style:'army',pods:1},{n:'Air Ambulance',body:0xf5f5f5,acc:0xd32f2f,style:'std',cross:1},
   {n:'News Helicopter',body:0xffd400,acc:0x222222,style:'std',dish:1},{n:'Taxi Helicopter',body:0xffc107,acc:0x111111,style:'bubble'},
   {n:'Luxury Helicopter',body:0x151518,acc:0xd4af37,style:'std',lux:1},{n:'Scout Helicopter',body:0x4fc3f7,acc:0xffffff,style:'bubble',small:1},
-  {n:'Cargo Helicopter',body:0x546e7a,acc:0xeceff1,style:'tandem'},{n:'Gunship',body:0x2b2b30,acc:0xb71c1c,style:'army',pods:1,wings:1}];
-HELIS.forEach((h,k)=>{ h.id=215+k; ITEMS[h.id]={name:h.n,e:'🚁',vehicle:'heli',variant:k,desc:'right-click to place, F to fly: Space up, C/Z down, W/S forward/back, A/D turn'}; });
+  {n:'Cargo Helicopter',body:0x546e7a,acc:0xeceff1,style:'tandem'},{n:'Gunship',body:0x2b2b30,acc:0xb71c1c,style:'army',pods:1,wings:1},
+  // drones (items 1264..1269): small, agile, hover on the spot, instant spin-up
+  {n:'Quadcopter Drone',drone:1,arms:4,body:0xeeeeee,acc:0x222222,cam:1},{n:'Camera Drone',drone:1,arms:4,body:0x3a3f47,acc:0x4fc3f7,cam:1,big:1},
+  {n:'Racing Drone',drone:1,arms:4,body:0xd32f2f,acc:0x111111,fast:1,small:1},{n:'Delivery Drone',drone:1,arms:6,body:0xffc107,acc:0x222222,box:1,big:1},
+  {n:'Rescue Drone',drone:1,arms:6,body:0xff7043,acc:0xffffff,light:1,cam:1},{n:'Heavy Lift Drone',drone:1,arms:8,body:0x37474f,acc:0xffb300,big:1,box:1}];
+const DRONE_DEF={max:15,steer:2.8,climb:9,rad:1.0,len:1.2,cam:7,camH:2.2,name:'Drone',exit:2.5,spin:3.5,acc:3};
+HELIS.forEach((h,k)=>{ h.id=h.drone?1264+(k-10):215+k; ITEMS[h.id]={name:h.n,e:h.drone?'🛸':'🚁',vehicle:'heli',variant:k,desc:h.drone?'right-click to place, F to fly: Space up, C/Z down, W/S forward/back, A/D turn, Shift fast. Hovers in place, spins up instantly':'right-click to place, F to fly: Space up, C/Z down, W/S forward/back, A/D turn'}; });
 // ---- airliners (flyable like the Airplane; ids 1230-1237)
 const LINERS=[
   {n:'Regional Jet',L:20,R:2.6,span:22,ch:3.4,sw:.32,wz:1.5,gh:1.3,eng:[[2.7,.5,5.6],[-2.7,.5,5.6]],tail:'T',fin:4.2,body:0xf5f5f5,acc:0x1565c0,max:50,to:20,stall:13,acc2:.45,win:9,wr:.5},
@@ -1227,7 +1232,7 @@ const RECIPES = [
     [[I.IRON,4],[B.GLASS,2],[I.COAL,1]],[[B.WOOL_WHITE,3],[B.PLANKS,2]],[[B.PLANKS,6],[B.WOOL_RED,1]],[[B.PLANKS,6],[B.WOOL_BLUE,1]],[[B.PLANKS,6],[B.WOOL_GREEN,1]],[[B.PLANKS,6],[B.WOOL_BLACK,1]]];
   DOORS.forEach((d,i)=>RECIPES.push({out:d.id,n:1,in:rc[i]})); }
 HOUSES.forEach(h=>RECIPES.push({out:h.id,n:1,in:houseCost(h)}));
-HELIS.forEach(h=>RECIPES.push({out:h.id,n:1,in:[[I.IRON,10],[B.GLASS,3],[I.GOLD,2],[I.COAL,2]]}));
+HELIS.forEach(h=>RECIPES.push({out:h.id,n:1,in:h.drone?[[I.IRON,4],[B.GLASS,1],[I.GOLD,1],[I.COAL,1]]:[[I.IRON,10],[B.GLASS,3],[I.GOLD,2],[I.COAL,2]]}));
 LINERS.forEach((l,k)=>RECIPES.push({out:l.id,n:1,in:[[I.IRON,12+k*3],[B.GLASS,4],[I.GOLD,2+(k>>1)],[I.COAL,3]]}));
 CARS.forEach((c,k)=>RECIPES.push({out:c.id,n:1,in:[[I.IRON,5+(k>>1)],[B.GLASS,2],[I.GOLD,1],[I.COAL,1]]}));
 // ---- placeable street lights (multi-block structures)
@@ -3938,7 +3943,7 @@ let pendingStarters=null, vehicles=[], driving=null, vLookYaw=0, vLookPitch=0, v
 let vCamMode=0; const VCAMS=['Chase camera','Driver / cockpit camera','Far chase camera','Front camera (looking back)','Top-down camera','Side camera'];
 function vCamCycle(){ vCamMode=(vCamMode+1)%VCAMS.length; vChase=vCamMode!==1; ui.toast(VCAMS[vCamMode]+'  (V or P = next camera)'); }
 function addVehicle(t,x,y,z,yaw,c){
-  const d=t==='boat'?boatDef(c||0):t==='auto'?autoDef(c||0):t==='liner'?linerDef(c||0):VDEF[t], m=d.build(VCOL[(c||0)%VCOL.length],c||0); scene.add(m.g);
+  const d=t==='boat'?boatDef(c||0):t==='auto'?autoDef(c||0):t==='liner'?linerDef(c||0):(t==='heli'&&HELIS[(c||0)%HELIS.length].drone)?Object.assign({},DRONE_DEF,{build:VDEF.heli.build}):VDEF[t], m=d.build(VCOL[(c||0)%VCOL.length],c||0); scene.add(m.g);
   const v={t,d,m,x,y,z,yaw:yaw||0,c:c||0,speed:0,vy:0,steer:0,pitch:0,roll:0,spin:0,wet:false,air:false,thr:0,pt:0,hx:0,hz:0,rot:0};
   m.g.rotation.order='YXZ'; m.g.position.set(x,y,z); m.g.rotation.y=v.yaw; vehicles.push(v); return v;
 }
@@ -4091,7 +4096,26 @@ function planeStep(v,dt,ctl){
   v.spin+=(v.thr*55+v.speed)*dt*1.0;
   const m=v.m; m.g.position.set(v.x,v.y,v.z); m.g.rotation.set(v.pitch,v.yaw,v.roll); if(m.prop) m.prop.rotation.z=v.spin; if(m.fans) for(const f of m.fans) f.rotation.z=v.spin;
 }
+function buildDrone(sp){
+  const sz=sp.small?0.8:sp.big?1.3:1, g=new THREE.Group(), o={g,wheels:[],front:[],rotors:[]};
+  const body=new THREE.MeshLambertMaterial({color:sp.body}), acc=new THREE.MeshLambertMaterial({color:sp.acc}), dark=vm.dark;
+  const bx=(w,h,d,m,x,y,z,par)=>vbox(w*sz,h*sz,d*sz,m,x*sz,y*sz,z*sz,par||g);
+  bx(1.0,.38,1.4,body,0,.75,0); bx(.8,.1,1.1,acc,0,.97,0);                                            // body + top plate
+  bx(.3,.12,.3,new THREE.MeshBasicMaterial({color:0x66ff88}),0,1.06,.45); bx(.3,.12,.3,new THREE.MeshBasicMaterial({color:0xff4444}),0,1.06,-.45);   // nav LEDs
+  const n=sp.arms, R=1.55;
+  for(let i=0;i<n;i++){ const a=(i+.5)/n*Math.PI*2, x=Math.sin(a)*R, z=Math.cos(a)*R;
+    const arm=vbox(.16*sz,.12*sz,R*sz,dark,x*sz/2,.78*sz,z*sz/2,g); arm.rotation.y=Math.atan2(x,z);
+    bx(.3,.3,.3,dark,x,.8,z);
+    const rg=new THREE.Group(); rg.position.set(x*sz,1.0*sz,z*sz); g.add(rg); vbox(1.25*sz,.04,.13*sz,acc,0,0,0,rg); vbox(.13*sz,.04,1.25*sz,acc,0,0,0,rg); rg.rotation.y=i; o.rotors.push(rg);
+    bx(.1,.4,.1,dark,x*.8,.45,z*.8); }                                                                // leg
+  if(sp.cam){ bx(.4,.4,.4,dark,0,.45,-.55); const lens=new THREE.Mesh(new THREE.SphereGeometry(.17*sz,8,6),new THREE.MeshBasicMaterial({color:0x335577})); lens.position.set(0,.45*sz,-.78*sz); g.add(lens); }
+  if(sp.box){ bx(.9,.7,.9,new THREE.MeshLambertMaterial({color:0xc89b5a}),0,.2,0); bx(.92,.1,.2,acc,0,.25,0); bx(.2,.1,.92,acc,0,.25,0); }
+  if(sp.light){ bx(.3,.18,.3,new THREE.MeshBasicMaterial({color:0xff2a2a}),.3,1.12,0); bx(.3,.18,.3,new THREE.MeshBasicMaterial({color:0x2a6bff}),-.3,1.12,0); }
+  o.rotor=new THREE.Group();
+  o.eye=new THREE.Vector3(0,.7*sz,-.8*sz); return o;
+}
 function buildHeli(col,k){
+  if(HELIS[k%HELIS.length].drone) return buildDrone(HELIS[k%HELIS.length]);
   const sp=HELIS[k%HELIS.length], s=sp.small?0.78:1, g=new THREE.Group(), o={g,wheels:[],front:[]};
   const body=new THREE.MeshLambertMaterial({color:sp.body}), acc=new THREE.MeshLambertMaterial({color:sp.acc}), gold=new THREE.MeshLambertMaterial({color:0xd4af37});
   const bx=(w,h,d,m,x,y,z,par)=>vbox(w*s,h*s,d*s,m,x*s,y*s,z*s,par||g);
@@ -4123,11 +4147,11 @@ function buildHeli(col,k){
 VDEF.heli={max:20,steer:1.7,climb:7,rad:2.6,len:2.2,build:buildHeli,cam:12,camH:3.2,name:'Helicopter',exit:5.5};
 function heliStep(v,dt,ctl){
   const d=v.d; if(!v.air&&!world.isLoaded(v.x,v.z)) return;
-  const on=!!ctl; v.rot+=((on?1:0)-v.rot)*(1-Math.exp(-(on?0.9:0.7)*dt));
+  const on=!!ctl; v.rot+=((on?1:0)-v.rot)*(1-Math.exp(-(on?(d.spin||0.9):0.7)*dt));
   const ready=v.rot>0.7, f=ctl?ctl.f:0, st=ctl?ctl.s:0, up=ctl?((ctl.brake?1:0)-(ctl.down?1:0)):0;
-  const vmax=d.max*(ctl&&ctl.boost?1.5:1), fx=-Math.sin(v.yaw), fz=-Math.cos(v.yaw);
+  const vmax=d.max*(ctl&&ctl.boost?(d.spin?2:1.5):1)*(HELIS[v.c%HELIS.length].fast?1.5:1), fx=-Math.sin(v.yaw), fz=-Math.cos(v.yaw);
   if(ready) v.yaw-=st*d.steer*dt;
-  const kh=1-Math.exp(-0.9*dt), tfx=ready?fx*f*vmax:0, tfz=ready?fz*f*vmax:0;
+  const kh=1-Math.exp(-(d.acc||0.9)*dt), tfx=ready?fx*f*vmax:0, tfz=ready?fz*f*vmax:0;
   v.hx+=(tfx-v.hx)*kh; v.hz+=(tfz-v.hz)*kh;
   let tvy; if(!on) tvy=v.air?-3.5:0; else if(!ready) tvy=0; else tvy=up*d.climb;
   v.vy+=(tvy-v.vy)*(1-Math.exp(-2.5*dt));
@@ -4143,7 +4167,7 @@ function heliStep(v,dt,ctl){
   const fwd=v.hx*fx+v.hz*fz, tp=-clamp(fwd/vmax,-1,1)*0.22, tr=-st*0.22*(ready?clamp(v.speed/8+0.3,0,1):0);
   v.pitch+=(tp-v.pitch)*(1-Math.exp(-4*dt)); v.roll+=(tr-v.roll)*(1-Math.exp(-4*dt));
   const m=v.m; m.g.position.set(v.x,v.y,v.z); m.g.rotation.set(v.pitch,v.yaw,v.roll);
-  m.rotor.rotation.y+=v.rot*38*dt; if(m.rotor2) m.rotor2.rotation.y-=v.rot*38*dt; if(m.tail) m.tail.rotation.x+=v.rot*55*dt;
+  if(m.rotors) m.rotors.forEach((r,i)=>r.rotation.y+=(i%2?-1:1)*v.rot*70*dt); m.rotor.rotation.y+=v.rot*38*dt; if(m.rotor2) m.rotor2.rotation.y-=v.rot*38*dt; if(m.tail) m.tail.rotation.x+=v.rot*55*dt;
 }
 // ---- boats: models + water physics
 const BMc={}; const bm=c=>BMc[c]||(BMc[c]=new THREE.MeshLambertMaterial({color:c})), bmb=c=>BMc['b'+c]||(BMc['b'+c]=new THREE.MeshBasicMaterial({color:c}));
@@ -4308,7 +4332,7 @@ function nearestVeh(maxD){
 function enterVeh(v){
   driving=v; vLookYaw=vLookPitch=0; player.flying=false; player.vel.set(0,0,0); input.mdx=input.mdy=0;
   target=null; hlMesh.visible=false; crackMesh.visible=false;
-  ui.toast(v.t==='heli'?'Helicopter: spin-up takes a moment. Space up, C/Z down, W/S forward/back, A/D turn, Shift boost':(v.t==='plane'||v.t==='liner')?'Airplane: hold W for throttle, roll to ~15 km/h then pull the mouse back to take off. A/D bank, V camera':'Driving '+v.d.name+' — W/S gas+brake, A/D steer, Space handbrake, Shift boost, V camera, F exit');
+  ui.toast(v.t==='heli'&&v.d===undefined?'':v.t==='heli'&&v.d.spin?'Drone: instant lift-off, hovers on the spot. Space up, C/Z down, W/S forward/back, A/D turn, Shift fast, V camera':v.t==='heli'?'Helicopter: spin-up takes a moment. Space up, C/Z down, W/S forward/back, A/D turn, Shift boost':(v.t==='plane'||v.t==='liner')?'Airplane: hold W for throttle, roll to ~15 km/h then pull the mouse back to take off. A/D bank, V camera':'Driving '+v.d.name+' — W/S gas+brake, A/D steer, Space handbrake, Shift boost, V camera, F exit');
 }
 function exitVeh(){
   const v=driving; if(!v) return;
@@ -4333,7 +4357,7 @@ function placeVehicle(id){
 }
 function pickupVeh(v){
   scene.remove(v.m.g); vehicles.splice(vehicles.indexOf(v),1);
-  if(!creative) addItem(v.t==='boat'?BOATS[v.c%BOATS.length].id:v.t==='liner'?LINERS[v.c%LINERS.length].id:v.t==='auto'?CARS[v.c%CARS.length].id:v.t==='heli'?HELIS[v.c%10].id:{car:I.CAR,bike:I.BIKE,plane:I.PLANE}[v.t],1); markProgress(); ui.toast(v.d.name+' picked up');
+  if(!creative) addItem(v.t==='boat'?BOATS[v.c%BOATS.length].id:v.t==='liner'?LINERS[v.c%LINERS.length].id:v.t==='auto'?CARS[v.c%CARS.length].id:v.t==='heli'?HELIS[v.c%HELIS.length].id:{car:I.CAR,bike:I.BIKE,plane:I.PLANE}[v.t],1); markProgress(); ui.toast(v.d.name+' picked up');
 }
 // ---- GPS for cars, planes, helicopters and boats: H sets HOME, B adds a STOP, N starts/stops the trip, J goes home, K clears stops, L hides the panel
 const GPS={home:null,stops:[],route:[],on:true,meshes:[],el:null,seq:0};
