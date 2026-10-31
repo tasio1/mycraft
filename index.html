@@ -328,6 +328,7 @@
         <div class="cicon" data-app="snake">&#128013;<span>Snake</span></div>
         <div class="cicon" data-app="notes">&#128221;<span>Notes</span></div>
         <div class="cicon" data-app="calc">&#129518;<span>Calculator</span></div>
+        <div class="cicon" data-app="cams">&#128249;<span>Cameras</span></div>
         <div class="cicon" data-app="flights">&#9992;&#65039;<span>Flights</span></div>
       </div>
       <div id="capp"><div class="chint">Double-click... just click an app on the left.<br>Esc closes the computer.</div></div>
@@ -742,8 +743,8 @@ HM.ftv={}; HM.ftvT={}; HM.ftvs=[];
 });
 function ftvInteract(x,y,z,id){
   const t=HM.ftvT[id];
-  if(HM.ftv[id]===1){ world.setBlock(x,y,z,t); ui.feed('TV on - '+tvLabel()); }
-  else { tvChannel++; if(tvChannel>=TVCH.length){ tvChannel=0; world.setBlock(x,y,z,t); ui.feed('TV off'); } else ui.feed(tvLabel()); }
+  if(HM.ftv[id]===1){ TVCHAN.set(tvKey(x,y,z),0); world.setBlock(x,y,z,t); ui.feed('TV on - '+tvLabelOf(0)); }
+  else { if(tvStep(x,y,z)){ world.setBlock(x,y,z,t); ui.feed('TV off'); } }
   animT=1;
   markProgress();
 }
@@ -767,7 +768,7 @@ SIT[B.SOFA]={h:1}; if(B.CHAIR) SIT[B.CHAIR]={h:1}; BEDS[B.BED]=1;
   HM.place[ids[0]]=ids; HM.beds.push(ids[0]); HM.fcost.push([ids[0],[[wool,3],[B.PLANKS,3]]]);
 });
 // ---- 10 ventilators (ids 1300+): box housings; the blades are real spinning meshes (see FANS / animFans)
-const FANBUF=[]; HM.vents=[];
+const FANBUF=[]; HM.vents=[]; const TVBUF=[], CAMBUF=[]; let SCRN=null; const CAMSET=new Set([1486,1487,1488,1489]);
 _pid=1300;
 (()=>{
   const M=pkTile('metal',[176,180,188]), MD=pkTile('metal',[64,68,76]), WH=pkTile('metal',[236,238,242]), YL=pkTile('metal',[222,184,60]), BR=pkTile('flat',[196,150,64],{amt:4}), WD=pkTile('planks',[150,104,60]),
@@ -809,6 +810,63 @@ function buildFans(c,list){
   if(!list.length) return; const g=new THREE.Group(); g.position.set(c.cx*CS,0,c.cz*CS);
   for(const [x,y,z,id] of list){ const spec=BLOCKS[id].fan; if(!spec) continue; const o=makeFan(spec); o.outer.position.set(x+spec.px,y+spec.py,z+spec.pz); g.add(o.outer); }
   scene.add(g); c.fanG=g; FANGROUPS.add(g); }
+
+/* ---- per-TV channels (screen overlays) + security cameras ---- */
+const TVCHAN=new Map(), TVLIVE=new Set(), CAMS=new Set(), FEEDS=new Map();
+const tvKey=(x,y,z)=>x+','+y+','+z;
+const tvChanAt=(x,y,z)=>TVCHAN.get(tvKey(x,y,z))||0;
+function disposeDyn(c){ if(!c.dynG) return; scene.remove(c.dynG); for(const t of c.dynTv) { TVLIVE.delete(t); t.mesh.geometry.dispose(); } for(const h of c.dynCam) CAMS.delete(h); c.dynG=null; c.dynTv=[]; c.dynCam=[]; }
+function tvScreenOf(key){ let o=TVSCR.get(key); if(!o){ const cv=document.createElement('canvas'); cv.width=cv.height=16; const tex=new THREE.CanvasTexture(cv); tex.magFilter=THREE.NearestFilter; tex.minFilter=THREE.NearestFilter; tex.generateMipmaps=false; o={cv,cx:cv.getContext('2d'),tex}; o.img=o.cx.createImageData(16,16); TVSCR.set(key,o); } return o; }
+const TVSCR=new Map();
+let camMatC=null, camMatL=null, camMatR=null, camMatD=null;
+function buildDyn(c,tvs,cams){
+  disposeDyn(c); if(!tvs.length&&!cams.length){ c.dynTv=[]; c.dynCam=[]; return; }
+  const g=new THREE.Group(); g.position.set(c.cx*CS,0,c.cz*CS); c.dynG=g; c.dynTv=[]; c.dynCam=[];
+  for(const [x,y,z,T,n,cor] of tvs){
+    const wx=x+c.cx*CS, wz=z+c.cz*CS, key=tvKey(wx,y,wz), o=tvScreenOf(key);
+    const geo=new THREE.BufferGeometry(), pos=[], uv=[];
+    for(let k=0;k<4;k++){ pos.push(cor[k][0]+n[0]*.004,cor[k][1]+n[1]*.004,cor[k][2]+n[2]*.004); uv.push(UVC[k][0],UVC[k][1]); }
+    geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(pos),3)); geo.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(uv),2)); geo.setIndex([1,2,3,1,3,0]);
+    const mat=new THREE.MeshBasicMaterial({map:o.tex,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+    const mesh=new THREE.Mesh(geo,mat); mesh.frustumCulled=false; g.add(mesh);
+    const t={mesh,mat,key,T,wx:wx+.5,wy:y+.5,wz:wz+.5,own:o,last:-1}; c.dynTv.push(t); TVLIVE.add(t);
+  }
+  if(cams.length){
+    if(!camMatC){ camMatC=new THREE.MeshLambertMaterial({color:0xd8dade}); camMatL=new THREE.MeshBasicMaterial({color:0x10131a}); camMatR=new THREE.MeshBasicMaterial({color:0xff2020}); }
+    for(const [x,y,z,id] of cams){
+      const q=id-1486, yaw=-q*Math.PI/2, grp=new THREE.Group(), pan=new THREE.Group(); grp.position.set(x+.5+Math.sin(yaw)*.1,y+.55,z+.5+Math.cos(yaw)*.1); grp.add(pan);
+      const bx=(w,h,d,m,px,py,pz)=>{ const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); o.position.set(px,py,pz); pan.add(o); return o; };
+      bx(.3,.26,.5,camMatC,0,0,-.05); bx(.2,.2,.06,camMatL,0,0,-.33); bx(.07,.07,.02,camMatR,.1,.12,-.2);
+      const h={x:0,y:y+.55,z:0,yaw,pan,phase:(x*7+z*13)%6.28,led:pan.children[2],ang:0}; h.x=grp.position.x+c.cx*CS; h.z=grp.position.z+c.cz*CS;
+      g.add(grp); c.dynCam.push(h); CAMS.add(h);
+    }
+  }
+  scene.add(g);
+}
+function animCams(dt){ const t=performance.now()/1000; for(const h of CAMS){ h.ang=Math.sin(t*.45+h.phase)*.65; h.pan.rotation.y=h.ang; h.led.visible=Math.floor(t*1.6+h.phase)%2===0; } }
+function nearestCam(x,y,z,maxD){ let best=null,bd=(maxD||200)*(maxD||200); for(const h of CAMS){ const d=(h.x-x)**2+(h.y-y)**2+(h.z-z)**2; if(d<bd){ bd=d; best=h; } } return best; }
+const camPos=h=>new THREE.Vector3(h.x,h.y,h.z);
+function feedFor(h){ let f=FEEDS.get(h); if(!f){ const rt=new THREE.WebGLRenderTarget(128,96,{minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter}); const cam=new THREE.PerspectiveCamera(70,4/3,.15,150); f={rt,cam,t:0,px:null}; FEEDS.set(h,f); } return f; }
+function renderFeed(h){
+  const f=feedFor(h), a=h.yaw+h.ang, c=f.cam; c.position.set(h.x-Math.sin(a)*.5,h.y,h.z-Math.cos(a)*.5); c.rotation.order='YXZ'; c.rotation.set(-.14,a,0); c.updateMatrixWorld(true);
+  const prev=renderer.getRenderTarget(); const keep=[]; scene.traverse(o=>{ if(o.userData&&o.userData.hideInFeed&&o.visible){ o.visible=false; keep.push(o); } });
+  renderer.setRenderTarget(f.rt); renderer.render(scene,c); renderer.setRenderTarget(prev); for(const o of keep) o.visible=true; f.t=performance.now(); return f;
+}
+let tvTickT=0, feedT=0, feedReq=new Map();
+function tvOverlayTick(dt){
+  tvTickT+=dt; feedT+=dt; const doPaint=tvTickT>=.16; if(doPaint) tvTickT=0; const doFeed=feedT>=.22; if(doFeed) feedT=0;
+  if(!doPaint&&!doFeed) return; const px=player.pos.x, py=player.pos.y, pz=player.pos.z; let n=0; const needCams=new Map();
+  for(const t of TVLIVE){ const d2=(t.wx-px)**2+(t.wz-pz)**2+(t.wy-py)**2; if(d2>34*34) continue; if(++n>28) break;
+    const ch=tvChanAt(Math.floor(t.wx),Math.floor(t.wy),Math.floor(t.wz));
+    if(ch===CAMCH){ const h=nearestCam(t.wx,t.wy,t.wz,160); if(h){ needCams.set(h,(needCams.get(h)||0)+1); t.feed=h; } else t.feed=null; }
+    else { t.feed=null; if(t.mat.map!==t.own.tex){ t.mat.map=t.own.tex; t.mat.needsUpdate=true; } if(doPaint){ const d=t.own.img.data; const ok=Textures.tvDraw(t.T,ch,animFrame,(x,y,r,g,b)=>{ const i=(y*16+x)*4; d[i]=r; d[i+1]=g; d[i+2]=b; d[i+3]=255; }); if(ok){ t.own.cx.putImageData(t.own.img,0,0); t.own.tex.needsUpdate=true; } } }
+  }
+  if(doFeed){
+    const list=[...needCams.keys()].sort((a,b)=>((a.x-px)**2+(a.z-pz)**2)-((b.x-px)**2+(b.z-pz)**2)).slice(0,3);
+    for(const h of list) renderFeed(h);
+    for(const t of TVLIVE) if(t.feed&&list.includes(t.feed)){ const f=FEEDS.get(t.feed); if(f&&t.mat.map!==f.rt.texture){ t.mat.map=f.rt.texture; t.mat.needsUpdate=true; } }
+  }
+}
 function animFans(dt){ if(!FANGROUPS.size) return; const tint=lightUniforms.tint.value;
   for(const m of FANMATS.values()) m.color.copy(m.userData.base).multiply(tint).multiplyScalar(.9);
   for(const g of FANGROUPS) for(const o of g.children){ const s=o.children[0]; s.rotation[s.userData.axis]+=s.userData.speed*dt; } }
@@ -1344,6 +1402,12 @@ const crop=(key,name,top,fruitTile,fk,n)=>{ NAT[key]=plantBlock('crops',name,top
 // ---- Airport TV: departure board block (placed in every airport terminal); right-click shows the departures from the nearest airport
 const AIRTV_T=pkTile("deptboard",[12,24,70]), AIRTV=1499; BLOCKS[AIRTV]={name:'Airport TV',tiles:[AIRTV_T,AIRTV_T,AIRTV_T],opaque:true,hard:.5,lit:true,desc:'right-click: departures board - book flights'}; (PCAT.airport=PCAT.airport||[]).push(AIRTV);
 RECIPES.push({out:AIRTV,n:1,in:[[I.IRON,2],[B.GLASS,2],[I.GOLD,1]]});
+// ---- security cameras: 4 facings, fixed ids 1486-1489; the swivelling head is a moving mesh (see buildDyn), feeds show on TVs (last channel) and in the Cameras app
+{ const sv=_pid; _pid=1486; const CT=pkTile('flat',[200,202,208],{amt:2}), CD=pkTile('flat',[46,50,58],{amt:2}); const T6=[CD,CD,CD,CD,CD,CD];
+  let bxs=[[[5.5,4,14,10.5,12,16],T6],[[7.2,7.2,9,8.8,8.8,14],[CT,CT,CT,CT,CT,CT]]], ids=[];
+  for(let q=0;q<4;q++){ const id=hmBlock(q===0?'Security Camera':'Security Camera ('+q+')',bxs,CT,{hard:.5,hidden:q>0,desc:'a camera that swivels and watches. Show it on any TV: right-click the TV until the last channel (Security cameras). Or use the Cameras app on a computer'}); ids.push(id); if(q>0) HM.base[id]=ids[0]; bxs=hmRot(bxs); }
+  HM.place[ids[0]]=ids; _pid=sv;
+  RECIPES.push({out:ids[0],n:1,in:[[I.IRON,2],[B.GLASS,1],[I.GOLD,1]]}); }
 crop('carrotP','Carrot Plant',[[[3,0,3,13,6,13],GR],[[6,6,6,10,10,10],GRL]],OR,'carrot',3);
 crop('potatoP','Potato Plant',[[[2,0,2,14,9,14],GRD],[[4,9,4,12,11,12],GR]],PT,'potato',3);
 crop('cornP','Corn Stalk',[[[6,0,6,10,16,10],GR],[[3,6,7,6,10,9],CN],[[10,8,7,13,12,9],CN]],CN,'corn',2);
@@ -1617,8 +1681,10 @@ const TVCH=(()=>{
   mv('Super Hero',(x,y,t,A)=>{ const hx=(((t*.14)%1.4)-.2)*A, hy=.35+Math.sin(t*2)*.04, dx=x-hx;
     if(E(dx,y,0,hy,.03,.035)) return [235,190,150]; if(R(dx,y,-.035,hy+.03,.035,hy+.1)) return [40,80,220]; if(dx<-.03&&dx>-.17&&y>hy+.02&&y<hy+.09+(-dx)*.2) return [220,40,50]; if(SEG(x,y,hx+.03,hy+.09,hx+.1,hy+.1,.015)) return [235,190,150];
     const bh=.25+H(Math.floor(x*8),3)*.35; if(y>.9-bh) return ((Math.floor(x*16)+Math.floor(y*16))%3===0&&Math.sin(t+x*9)>-.7)?[255,220,100]:[20,24,48]; return mix([8,10,40],[60,30,90],y); });
+  tv('Security Cam',(x,y,t,A)=>{ const sc=((Math.floor(y*28)+Math.floor(t*6))%2)?6:0; if(R(x,y,.06*A,.07,.13*A,.13)&&Math.floor(t*1.5)%2===0) return [230,30,30]; return [26+sc+(H(Math.floor(x*30),Math.floor(y*30)+Math.floor(t*8))*10|0),34+sc,30+sc]; });
   return L;
 })();
+const CAMCH=TVCH.length-1;
 const tvColor=(ch,u,v,f,A)=>{ A=A||1; const c=TVCH[((ch%TVCH.length)+TVCH.length)%TVCH.length]; const r=c.fn(u*A,v,f*.16,A); return r; };
 
 const Textures = (() => {
@@ -1885,9 +1951,10 @@ const Textures = (() => {
       } else { col=mixc([255,206,140],[250,150,90],y/15); const d=Math.sin(x*.5)*2+9; if(y>d) col=mixc([226,160,92],[170,104,60],(y-d)/6); if(Math.hypot(x-12,y-3)<2.2) col=[255,244,200]; }
       if(x===0||x===15||y===0||y===15) col=mixc(col,[0,0,0],.45);
       px(t,x,y,col[0],col[1],col[2]); }); },
-    lapkeys:(t,c)=>each(t,(x,y)=>{ let col=[c[0],c[1],c[2]];
-      if(y>=1&&y<=9&&x>=1&&x<=14){ col=(x%3!==0&&y%2===1)?[c[0]*.25,c[1]*.25,c[2]*.28]:[c[0]*.72,c[1]*.72,c[2]*.74]; }
-      else if(y>=11&&y<=14&&x>=5&&x<=10){ col=(x===5||x===10||y===11||y===14)?[c[0]*.55,c[1]*.55,c[2]*.58]:[c[0]*1.18,c[1]*1.18,c[2]*1.2]; }
+    lapkeys:(t,c)=>each(t,(x,y)=>{ let col=[c[0]*.8,c[1]*.8,c[2]*.82];   // deck
+      const key=[Math.min(255,c[0]*.8+62),Math.min(255,c[1]*.8+62),Math.min(255,c[2]*.8+66)], gap=[c[0]*.42,c[1]*.42,c[2]*.45];
+      if(y>=1&&y<=10&&x>=1&&x<=14){ col=gap; const kx=(x-1)%3<2&&x<=14, ky=(y===1||y===2||y===4||y===5||y===7||y===8); if(kx&&ky) col=key; if((y===10||y===9)&&x>=4&&x<=11) col=key; if((y===9||y===10)&&!(x>=4&&x<=11)) col=gap; }
+      else if(y>=11&&y<=14&&x>=5&&x<=10){ col=(x===5||x===10||y===11||y===14)?[c[0]*.55,c[1]*.55,c[2]*.58]:[Math.min(255,c[0]*1.1+30),Math.min(255,c[1]*1.1+30),Math.min(255,c[2]*1.1+32)]; }
       noisy(t,x,y,col,2); }),
     laplid:(t,c)=>each(t,(x,y)=>{ const d=Math.hypot(x-7.5,y-7.5); noisy(t,x,y,d<2.6?[Math.min(255,c[0]+70),Math.min(255,c[1]+70),Math.min(255,c[2]+75)]:c,3); }),
     elevtop:(t,c)=>each(t,(x,y)=>{ const e=Math.max(Math.abs(x-7.5),Math.abs(y-7.5)); let col;
@@ -2038,7 +2105,9 @@ const Textures = (() => {
   function paintTile(t,fn){ const x0=(t%AT)*TS, y0=((t/AT)|0)*TS, d=ctx.getImageData(x0,y0,TS,TS);
     fn((x,y,r,g,b)=>{ const i=(y*TS+x)*4; d.data[i]=r; d.data[i+1]=g; d.data[i+2]=b; d.data[i+3]=255; }); ctx.putImageData(d,x0,y0); texture.needsUpdate=true; }
   const tvPaint=(ch,f)=>{ tvCur.ch=ch; tvCur.f=f; for(const m of TVM) paintTile(m.ton,put=>tvPix(m,true,ch,f,put)); for(const r of BTV_REG) paintTile(r.t,put=>r.draw(put)); }, compPaint=f=>{ for(const m of CPM) paintTile(m.tscr,put=>compPix(m,f,put)); };
-  return {texture,avg,icon,cracks,AT,tvPaint,compPaint};
+  const tvDraw=(tile,ch,f,put)=>{ for(const m of TVM) if(m.ton===tile){ tvPix(m,true,ch,f,put); return true; } for(const r of BTV_REG) if(r.t===tile){ const o=[tvCur.ch,tvCur.f]; tvCur.ch=ch; tvCur.f=f; r.draw(put); tvCur.ch=o[0]; tvCur.f=o[1]; return true; } return false; };
+  const scrTiles=()=>{ const S=new Set(); for(const m of TVM) S.add(m.ton); for(const r of BTV_REG) S.add(r.t); return S; };
+  return {texture,avg,icon,cracks,AT,tvPaint,compPaint,tvDraw,scrTiles};
 })();
 const BLOCK_COLOR = BLOCKS.map(b=>b?Textures.avg(b.tiles[2]):null);
 
@@ -2199,13 +2268,13 @@ class ChunkMesher {
       if(n){ lt[k*2]=s/n; lt[k*2+1]=b/n; } else { lt[k*2]=0.07; lt[k*2+1]=0; } } }
 
   static build(world,chunk){
-    FANBUF.length=0; this.fillPadded(world,chunk); computeLight(world,chunk);
+    FANBUF.length=0; TVBUF.length=0; CAMBUF.length=0; if(!SCRN) SCRN=Textures.scrTiles(); this.fillPadded(world,chunk); computeLight(world,chunk);
     const O=new MeshData(), W=new MeshData(), L=new MeshData(), P=padded, ao=[3,3,3,3], lt=new Float32Array(8);
     for(let y=0;y<CH;y++)for(let z=0;z<CS;z++)for(let x=0;x<CS;x++){
       const id=P[(y+1)*OY+(z+1)*OZ+(x+1)]; if(id===B.AIR) continue;
       const pi=(y+1)*OY+(z+1)*OZ+(x+1), def=BLOCKS[id], isW=id===B.WATER, op=OPAQUE[id]===1;
-      if(def.box){ if(def.fan) FANBUF.push([x,y,z,id]); for(const bx of def.box){ const tl=Array.isArray(bx[1])?bx[1]:[bx[1],bx[1],bx[1]];
-          for(let fi=0;fi<6;fi++){ const f=FACE_DEFS[fi]; if(bx[2]) this.addBoxFace(L,x,y,z,f,(tl.length===6?tl[fi]:tl[f.tile]),bx[0],1); else { const li=y*LA+(z+16)*LR+(x+16); this.addBoxFace(O,x,y,z,f,(tl.length===6?tl[fi]:tl[f.tile]),bx[0],f.shade,LCS[LSKY[li]],LCB[LBLK[li]]); } } }
+      if(def.box){ if(def.fan) FANBUF.push([x,y,z,id]); if(CAMSET.has(id)) CAMBUF.push([x,y,z,id]); for(const bx of def.box){ const tl=Array.isArray(bx[1])?bx[1]:[bx[1],bx[1],bx[1]];
+          for(let fi=0;fi<6;fi++){ const f=FACE_DEFS[fi]; { const T=(tl.length===6?tl[fi]:tl[f.tile]); if(SCRN.has(T)){ const b=bx[0]; TVBUF.push([x,y,z,T,f.dir,f.c.map(c=>[x+(c[0]?b[3]:b[0])/16,y+(c[1]?b[4]:b[1])/16,z+(c[2]?b[5]:b[2])/16])]); } } if(bx[2]) this.addBoxFace(L,x,y,z,f,(tl.length===6?tl[fi]:tl[f.tile]),bx[0],1); else { const li=y*LA+(z+16)*LR+(x+16); this.addBoxFace(O,x,y,z,f,(tl.length===6?tl[fi]:tl[f.tile]),bx[0],f.shade,LCS[LSKY[li]],LCB[LBLK[li]]); } } }
         continue; }
       for(let fi=0;fi<6;fi++){
         const f=FACE_DEFS[fi], nid=P[pi+f.off];
@@ -2225,6 +2294,7 @@ class ChunkMesher {
             ao[k]=(s1&&s2)?0:3-(s1+s2+cc);
           }
           const tl=def.sides&&fi>=2?def.sides[fi-2]:def.tiles[f.tile];
+          if(SCRN.has(tl)) TVBUF.push([x,y,z,tl,f.dir,f.c.map(c=>[x+c[0],y+c[1],z+c[2]])]);
           if(def.lit) this.addFace(L,x,y,z,f,tl,[3,3,3,3],1,1);
           else { this.faceLight(x,y,z,f,lt); this.addFace(O,x,y,z,f,tl,ao,f.shade,1,lt); }
         }
@@ -2777,6 +2847,7 @@ class World {
   disposeMesh(c){
     for(const k of ['meshO','meshW','meshL']) if(c[k]){ this.scene.remove(c[k]); c[k].geometry.dispose(); c[k]=null; }
     if(c.fanG){ this.scene.remove(c.fanG); FANGROUPS.delete(c.fanG); c.fanG=null; }
+    disposeDyn(c);
   }
   buildMesh(c){
     const {O,W,L}=ChunkMesher.build(this,c);
@@ -2792,7 +2863,7 @@ class World {
       const m=new THREE.Mesh(g,mat); m.position.set(c.cx*CS,0,c.cz*CS); m.renderOrder=order;
       this.scene.add(m); return m;
     };
-    c.meshO=mk(O,this.mats.opaque,0); c.meshL=mk(L,this.mats.lit,0); c.meshW=mk(W,this.mats.water,1); buildFans(c,FANBUF.slice());
+    c.meshO=mk(O,this.mats.opaque,0); c.meshL=mk(L,this.mats.lit,0); c.meshW=mk(W,this.mats.water,1); buildFans(c,FANBUF.slice()); buildDyn(c,TVBUF.slice(),CAMBUF.slice());
     c.meshed=true;
   }
 
@@ -3371,7 +3442,7 @@ function saveFlash(){ const e=$('savei'); if(!e) return; e.style.opacity=1; clea
 function doSave(silent){
   if(!world) return;
   if(world.mp){ try{ localStorage.setItem(mpInvKey(),JSON.stringify({inv,hot:hotbar,found,fx})); }catch(e){} if(!silent) ui.toast('Your items are saved (the shared world belongs to the host)'); lastSave=performance.now(); return; }
-  const ok=world.save({p:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch,fly:player.flying},t:timeOfDay,ts:Date.now(),slot:ui.sel,gm:gunMag,inv,hot:hotbar,found,fx,pets:petSave(),riv:rivalSave(),veh:vehicles.filter(v=>!v.parked).map(v=>({t:v.t,x:v.x,y:v.y,z:v.z,yaw:v.yaw,c:v.c})),bed:bedSpawn});
+  const ok=world.save({tvc:[...TVCHAN],p:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch,fly:player.flying},t:timeOfDay,ts:Date.now(),slot:ui.sel,gm:gunMag,inv,hot:hotbar,found,fx,pets:petSave(),riv:rivalSave(),veh:vehicles.filter(v=>!v.parked).map(v=>({t:v.t,x:v.x,y:v.y,z:v.z,yaw:v.yaw,c:v.c})),bed:bedSpawn});
   if(!silent) ui.toast(ok?'World saved':'Save failed (storage full?)');
   lastSave=performance.now();
   if(ok&&ACCT&&CLOUD.ready) cloudPush(world.seedStr,!silent);
@@ -3390,7 +3461,7 @@ function applyFog(){
 function startGame(seedStr,mp){
   world=new World(seedStr,scene,materials);
   let saved=mp?null:World.load(seedStr); if(mp){ world.mp=true; world.applySave({mods:mp.mods}); } else world.applySave(saved);
-  world.onEdit=netEdit;
+  world.onEdit=netEdit; TVCHAN.clear(); if(saved&&saved.tvc) for(const [k,v] of saved.tvc) TVCHAN.set(k,v);
   world.setRenderDistance(settingsRD); applyFog();
   player=new Player(world); particles=new Particles(scene,world);
   if(saved&&saved.p){ player.pos.set(saved.p.x,saved.p.y,saved.p.z); player.yaw=saved.p.yaw||0; player.pitch=saved.p.pitch||0; player.flying=!!saved.p.fly; }
@@ -3509,7 +3580,7 @@ function rightClick(first){
     if(tid===AIRTV){ openComputer('board'); return; }
     if(isTV(tid)){ tvInteract(target.x,target.y,target.z,tid); return; }
     if(HM.ftv[tid]){ ftvInteract(target.x,target.y,target.z,tid); return; }
-    if(BLOCKS[tid]&&/\(screen part\)$/.test(BLOCKS[tid].name)){ tvChannel=(tvChannel+1)%TVCH.length; ui.feed('Big screen - '+tvLabel()); animT=1; return; }
+    if(BLOCKS[tid]&&/\(screen part\)$/.test(BLOCKS[tid].name)){ bigTvStep(target.x,target.y,target.z,tid); return; }
     if(SIT[tid]){ sitOn(target.x,target.y,target.z,tid); return; }
     if(BEDS[tid]){ useBed(target.x,target.y,target.z); return; }
     if(isComp(tid)){ openComputer(); return; }
@@ -3585,13 +3656,20 @@ document.addEventListener('keydown',e=>{
 // ---------- TV + computer (right-click them in the world)
 let tvChannel=0, animT=0, animFrame=0;
 const tvLabel=()=>{ const c=TVCH[tvChannel%TVCH.length]; return c.movie?'Movie: '+c.n:'Channel '+(tvChannel+1)+': '+c.n; };
+const tvLabelOf=ch=>{ const c=TVCH[ch%TVCH.length]; return ch===CAMCH?'Channel '+(ch+1)+': Security cameras (live)':c.movie?'Movie: '+c.n:'Channel '+(ch+1)+': '+c.n; };
+function tvStep(x,y,z,off){   // returns true when the TV should switch off
+  const k=tvKey(x,y,z); let ch=TVCHAN.get(k); if(ch===undefined) ch=-1; ch++; if(ch>=TVCH.length){ TVCHAN.delete(k); return true; } TVCHAN.set(k,ch); ui.feed(tvLabelOf(ch)); return false; }
 function tvInteract(x,y,z,id){
-  if(TV_OFF_TO_ON[id]){ world.setBlock(x,y,z,TV_OFF_TO_ON[id]); markProgress(); ui.feed('TV on - '+tvLabel()); }
-  else { tvChannel++; if(tvChannel>=TVCH.length){ tvChannel=0; world.setBlock(x,y,z,TV_ON_TO_OFF[id]); ui.feed('TV off'); } else ui.feed(tvLabel()); markProgress(); }
+  if(TV_OFF_TO_ON[id]){ TVCHAN.set(tvKey(x,y,z),0); world.setBlock(x,y,z,TV_OFF_TO_ON[id]); markProgress(); ui.feed('TV on - '+tvLabelOf(0)); }
+  else { if(tvStep(x,y,z)){ world.setBlock(x,y,z,TV_ON_TO_OFF[id]); ui.feed('TV off'); } markProgress(); }
   animT=1;
 }
+function bigTvStep(x,y,z,id){   // all connected screen parts of the same kind change together
+  const k0=tvKey(x,y,z); let ch=((TVCHAN.get(k0)||0)+1)%TVCH.length, seen=new Set([k0]), q=[[x,y,z]];
+  while(q.length&&seen.size<400){ const [a,b,c]=q.pop(); TVCHAN.set(tvKey(a,b,c),ch); for(const [dx,dy,dz] of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]){ const nx=a+dx,ny=b+dy,nz=c+dz,k=tvKey(nx,ny,nz); if(seen.has(k)) continue; if(world.getBlock(nx,ny,nz)===id){ seen.add(k); q.push([nx,ny,nz]); } } }
+  ui.feed('Big screen - '+tvLabelOf(ch)); animT=1; }
 function tickAnim(dt){
-  animFans(dt); animT+=dt; if(animT<0.16) return; animT=0; animFrame++;
+  animFans(dt); animCams(dt); tvOverlayTick(dt); animT+=dt; if(animT<0.16) return; animT=0; animFrame++;
   Textures.tvPaint(tvChannel,animFrame); Textures.compPaint(Math.floor(animFrame/3)%2);
 }
 let compApp='', snakeTimer=null, snake=null;
@@ -3627,6 +3705,19 @@ function openApp(app){
   } else if(app==='calc') buildCalc(box);
   else if(app==='flights') buildFlights(box);
   else if(app==='board') buildBoard(box);
+  else if(app==='cams') buildCams(box);
+}
+let camAppT=null;
+function buildCams(box){
+  const list=[...CAMS].sort((a,b)=>((a.x-player.pos.x)**2+(a.z-player.pos.z)**2)-((b.x-player.pos.x)**2+(b.z-player.pos.z)**2));
+  box.style.alignItems='stretch'; box.style.overflow='auto'; box.style.background='#0b0f12'; box.style.color='#cfe';
+  if(!list.length){ box.innerHTML='<div class="chint" style="color:#9ab">No security cameras nearby. Place a Security Camera block (inventory, TVs &amp; computers tab) on a wall, then open this app again.</div>'; return; }
+  let i=0; box.innerHTML='<div style="font:bold 18px monospace;margin-bottom:6px">&#128249; SECURITY CAMERAS</div><canvas id="camc" width="128" height="96" style="width:100%;max-width:512px;image-rendering:pixelated;background:#000;border:2px solid #345"></canvas><div id="camt" style="font:13px monospace;margin:6px 0"></div><div style="display:flex;gap:8px;max-width:512px"><button id="camp" class="alt">&#9664; Prev</button><button id="camn" class="alt">Next &#9654;</button></div>';
+  const cv=$('camc'), cx=cv.getContext('2d'), img=cx.createImageData(128,96), buf=new Uint8Array(128*96*4);
+  const upd=()=>{ const h=list[i]; if(!h||!CAMS.has(h)){ return; } const f=renderFeed(h); renderer.readRenderTargetPixels(f.rt,0,0,128,96,buf); for(let y=0;y<96;y++){ const s=(95-y)*128*4; img.data.set(buf.subarray(s,s+512),y*512); } cx.putImageData(img,0,0);
+    $('camt').textContent='Camera '+(i+1)+' of '+list.length+' \u00b7 '+Math.round(h.x)+', '+Math.round(h.z)+' \u00b7 '+Math.round(Math.hypot(h.x-player.pos.x,h.z-player.pos.z))+' blocks away'; };
+  $('camp').onclick=()=>{ i=(i-1+list.length)%list.length; upd(); }; $('camn').onclick=()=>{ i=(i+1)%list.length; upd(); };
+  if(camAppT) clearInterval(camAppT); camAppT=setInterval(()=>{ if(state!=='computer'||compApp!=='cams'){ clearInterval(camAppT); camAppT=null; return; } upd(); },250); upd();
 }
 /* ---- FLIGHT BOOKING: airlines, fares in gold, an airliner takes you from one airport to another on autopilot ---- */
 const AIRLINES=[
@@ -3758,7 +3849,7 @@ const INV_TABS=[
   {id:'neon',title:'Neon & lights',icon:PCAT.light[1],ids:PCAT.light},
   {id:'houses',title:'Houses & landmarks (41)',icon:HOUSES[0].id,ids:HOUSES.map(h=>h.id)},
   {id:'doors',title:'Doors',icon:DOORS[0].id,ids:DOORS.map(d=>d.id)},
-  {id:'tech',title:'TVs, computers & laptops',icon:B.COMPUTER,ids:[...TVM.map(m=>m.off),...CPM.map(m=>m.id),...LPM.map(m=>m.id),...HM.ftvs,AIRTV]},
+  {id:'tech',title:'TVs, computers & laptops',icon:B.COMPUTER,ids:[...TVM.map(m=>m.off),...CPM.map(m=>m.id),...LPM.map(m=>m.id),...HM.ftvs,AIRTV,1486]},
   {id:'furniture',title:'Furniture',icon:B.SOFA,ids:[B.SOFA,B.BED,B.TABLE,B.DESK,B.CHAIR,B.CABINET,B.FRIDGE,B.STOVE,B.CARPET,B.PLANT,B.PIANO,B.BOOKSHELF,B.LAMP,B.TV_OFF,B.TV_ON,B.COMPUTER,...HM.sofas,...HM.beds]},
   {id:'home2',title:'Lamps, elevators & laptops',icon:HM.lamps[0],ids:[...HM.lamps,HM.elev,...HM.laps]},
   {id:'ladders',title:'Ladders',icon:HM.ladders[0],ids:HM.ladders},
