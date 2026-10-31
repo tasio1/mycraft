@@ -697,10 +697,10 @@ LAMPDEF.forEach(([n,c,k])=>{
 // laptops: realistic open laptop, 4 facings, glowing wallpaper screen
 const LAPDEF=[['Space Black Laptop',[44,48,56],'lake'],['Silver Laptop',[190,194,202],'sunset'],['Gold Laptop',[214,184,120],'desert'],['Rose Laptop',[226,160,178],'aurora'],['Midnight Blue Laptop',[34,54,100],'city'],['Forest Green Laptop',[40,86,60],'forest']];
 LAPDEF.forEach(([n,c,w])=>{
-  const K=pkTile('lapkeys',c), LID=pkTile('laplid',c), W=pkTile('wallp',null,{k:w}), BD=pkTile('flat',c.map(v=>v*.92),{amt:2}), BZ=pkTile('flat',[10,10,12],{amt:1});
+  const K=pkTile('lapkeys',c), KQ=[K,pkTile('lapkeys',c,{rot:1}),pkTile('lapkeys',c,{rot:2}),pkTile('lapkeys',c,{rot:3})], LID=pkTile('laplid',c), W=pkTile('wallp',null,{k:w}), BD=pkTile('flat',c.map(v=>v*.92),{amt:2}), BZ=pkTile('flat',[10,10,12],{amt:1});
   const base=[ [[1,0,2,15,2,15],[K,BD,BD,BD,BD,BD]], [[1,2,2,15,13,3],[BD,BD,BD,BD,BZ,LID]], [[2,3,3,14,12,3.4],[BZ,BZ,BZ,BZ,W,BZ],1] ];
   let boxes=base, ids=[];
-  for(let q=0;q<4;q++){ const id=hmBlock(q===0?n:n+' ('+q+')',boxes,W,{hard:.5,lit:true,hidden:q>0,desc:'right-click to use: Snake, Notes, Calculator'}); ids.push(id); if(q>0) HM.base[id]=ids[0]; HM.comp[id]=1; boxes=hmRot(boxes); }
+  for(let q=0;q<4;q++){ const id=hmBlock(q===0?n:n+' ('+q+')',boxes,W,{hard:.5,lit:true,hidden:q>0,desc:'right-click to use: Snake, Notes, Calculator'}); ids.push(id); if(q>0) HM.base[id]=ids[0]; HM.comp[id]=1; boxes=hmRot(boxes); if(q<3) boxes[0][1][0]=KQ[q+1]; }
   HM.place[ids[0]]=ids; HM.laps.push(ids[0]);
 });
 const HM_FACE=yaw=>{ const nx=Math.sin(yaw), nz=Math.cos(yaw); return Math.abs(nz)>=Math.abs(nx)?(nz>0?0:2):(nx<0?1:3); };
@@ -1951,11 +1951,11 @@ const Textures = (() => {
       } else { col=mixc([255,206,140],[250,150,90],y/15); const d=Math.sin(x*.5)*2+9; if(y>d) col=mixc([226,160,92],[170,104,60],(y-d)/6); if(Math.hypot(x-12,y-3)<2.2) col=[255,244,200]; }
       if(x===0||x===15||y===0||y===15) col=mixc(col,[0,0,0],.45);
       px(t,x,y,col[0],col[1],col[2]); }); },
-    lapkeys:(t,c)=>each(t,(x,y)=>{ let col=[c[0]*.8,c[1]*.8,c[2]*.82];   // deck
+    lapkeys:(t,c,o)=>each(t,(X,Y)=>{ let x=X,y=Y; for(let r=0;r<((o&&o.rot)||0);r++){ const nx=y, ny=15-x; x=nx; y=ny; } let col=[c[0]*.8,c[1]*.8,c[2]*.82];   // deck
       const key=[Math.min(255,c[0]*.8+62),Math.min(255,c[1]*.8+62),Math.min(255,c[2]*.8+66)], gap=[c[0]*.42,c[1]*.42,c[2]*.45];
       if(y>=1&&y<=10&&x>=1&&x<=14){ col=gap; const kx=(x-1)%3<2&&x<=14, ky=(y===1||y===2||y===4||y===5||y===7||y===8); if(kx&&ky) col=key; if((y===10||y===9)&&x>=4&&x<=11) col=key; if((y===9||y===10)&&!(x>=4&&x<=11)) col=gap; }
       else if(y>=11&&y<=14&&x>=5&&x<=10){ col=(x===5||x===10||y===11||y===14)?[c[0]*.55,c[1]*.55,c[2]*.58]:[Math.min(255,c[0]*1.1+30),Math.min(255,c[1]*1.1+30),Math.min(255,c[2]*1.1+32)]; }
-      noisy(t,x,y,col,2); }),
+      noisy(t,X,Y,col,2); }),
     laplid:(t,c)=>each(t,(x,y)=>{ const d=Math.hypot(x-7.5,y-7.5); noisy(t,x,y,d<2.6?[Math.min(255,c[0]+70),Math.min(255,c[1]+70),Math.min(255,c[2]+75)]:c,3); }),
     elevtop:(t,c)=>each(t,(x,y)=>{ const e=Math.max(Math.abs(x-7.5),Math.abs(y-7.5)); let col;
       if(e>6.2) col=((((x+y)>>1)&1)?[238,196,40]:[34,34,38]); else col=[148,154,162];
