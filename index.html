@@ -44,6 +44,13 @@
   button{display:block;width:100%;margin-top:12px;padding:10px;font:inherit;font-size:16px;color:#fff;background:#4a8f2a;border:3px solid #2c5a16;cursor:pointer}
   button:hover{background:#5fb338}
   button.alt{background:#555;border-color:#333}button.alt:hover{background:#6b6b6b}
+  #wlist{max-height:190px;overflow:auto;border:2px solid #444;background:#111;margin-top:4px}
+  .wrow{display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:pointer;border-bottom:1px solid #2a2a2a;text-align:left}
+  .wrow.sel{background:#2c5a16}.wrow:hover{background:#2a3a22}.wrow.sel:hover{background:#2c5a16}
+  .wrow .wn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+  .wrow .wn small{display:block;color:#9a9;font-size:11px}
+  .wrow button{width:auto;margin:0;padding:3px 8px;font-size:12px}
+  #wnew-box{display:none;margin-top:6px}#wnew-box.open{display:block}
   .keys{margin-top:14px;font-size:12px;color:#aaa;text-align:left;line-height:1.5}
   .bar{width:320px;height:16px;border:2px solid #888;margin:12px auto 0}
   .bar div{height:100%;width:0;background:#7fd957}
@@ -259,8 +266,17 @@
       </div>
       <div id="acmsg"></div>
     </div>
-    <label for="seed">World seed</label>
-    <input id="seed" type="text" value="" placeholder="any text or number" maxlength="40" autocomplete="off">
+    <label>Your worlds <span id="wcount" style="color:#888">(0/10)</span></label>
+    <div id="wlist"></div>
+    <button id="wnewbtn" class="alt">+ Create new world</button>
+    <div id="wnew-box">
+      <label for="wname" style="margin-top:4px">World name</label>
+      <input id="wname" type="text" maxlength="24" placeholder="My new world" autocomplete="off">
+      <label for="wseed">Seed <span style="color:#888">(optional - empty = random)</span></label>
+      <input id="wseed" type="text" maxlength="40" placeholder="any text or number" autocomplete="off">
+      <div class="two"><button id="wcreate">Create</button><button id="wcancel" class="alt">Cancel</button></div>
+    </div>
+    <input id="seed" type="hidden" value="">
     <label for="rd0">Render distance: <span id="rd0v">6</span> chunks</label>
     <input id="rd0" type="range" min="4" max="8" value="6">
     <div class="row"><input id="creative0" type="checkbox"> <label for="creative0" style="margin:0">Creative mode (unlimited blocks &amp; items, fast breaking)</label></div>
@@ -279,7 +295,7 @@
       <div id="mpmsg"></div>
       <div class="keys" style="margin-top:6px">Hosting uses the world seed above and your saved progress. Friends who join see your world, your builds and each other, and can build too. Press T to chat.</div>
     </div>
-    <button id="delsave" class="alt">Delete saved progress for this seed</button>
+    
     <div class="keys">
       WASD move &middot; Space jump (double-tap: fly) &middot; Shift sprint<br>
       Left-click hold: break &middot; Right-click: place &middot; 1-9 / wheel: hotbar<br>
@@ -3102,7 +3118,7 @@ const newSalt=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36)
 const validPin=p=>/^\d{4}$/.test(p);
 let acFails={}, acMsgT=0;
 function acMsg(t,ok){ const m=document.getElementById('acmsg'); m.textContent=t||''; m.className=ok?'ok':''; }
-function acRefresh(){
+function acRefresh(){ if(typeof initWorlds==='function'&&window.__wReady){ try{ wLoad(); if(!WORLDS.some(w=>w.seed===$('seed').value)) $('seed').value=WORLDS[0].seed; wRender(); }catch(e){} }
   const d=document.getElementById.bind(document); d('acOut').classList.toggle('hidden',!!ACCT); d('acIn').classList.toggle('hidden',!ACCT);
   d('acWho').textContent=ACCT; d('acPinForm').classList.add('hidden');
   d('seed').title=ACCT?'Your worlds are saved under account '+ACCT:'Guest worlds are shared on this browser';
@@ -3280,13 +3296,59 @@ $('cycle').onchange=e=>cycleOn=e.target.checked;
 $('zomb1').checked=hostileOn; $('zomb1').onchange=e=>{ hostileOn=e.target.checked; saveSettings(); ui.toast(hostileOn?'Zombies will hunt you at night':'Peaceful: zombies are off'); };
 setRD(settingsRD);
 acInit();
-$('seed').value=settings.seed||'voxelcraft';   // same seed = same world + your saved progress
+$('seed').value=settings.seed||'voxelcraft';
 const setCreative=(v,announce)=>{ creative=v; $('creative0').checked=v; $('creative1').checked=v; ui.renderHotbar(); if(world){ updateStats(); if(announce) ui.toast(v?'Creative mode: unlimited blocks & items, fast breaking':'Survival mode: collect blocks, craft, find presents'); } saveSettings(); };
 $('creative0').checked=$('creative1').checked=creative;
 $('creative0').onchange=e=>setCreative(e.target.checked); $('creative1').onchange=e=>setCreative(e.target.checked,true);
-let delArmed=false;
-$('delsave').onclick=()=>{ const b=$('delsave'); if(!delArmed){ delArmed=true; b.textContent='Click again to really delete this seed\'s progress'; setTimeout(()=>{delArmed=false;b.textContent='Delete saved progress for this seed';},3000); return; }
-  try{ localStorage.removeItem(worldKey($('seed').value.trim()||'default')); }catch(e){} delArmed=false; b.textContent='Deleted'; };
+
+// ---- multiple worlds (up to 10) ----
+const MAXW=10;
+function worldsKey(){ return 'voxelcraft_worlds'+(ACCT?'_acct_'+encodeURIComponent(acctSlug(ACCT)):''); }
+let WORLDS=[];
+function wLoad(){
+  let l=null; try{ l=JSON.parse(localStorage.getItem(worldsKey())); }catch(e){}
+  if(!Array.isArray(l)){
+    l=[];
+    try{ const pre=worldKey(''); for(let i=0;i<localStorage.length&&l.length<MAXW;i++){ const k=localStorage.key(i); if(k&&k.startsWith(pre)&&k.length>pre.length){ const sd=k.slice(pre.length); if(!ACCT&&sd.startsWith('acct_')) continue; l.push({name:sd,seed:sd,t:0}); } } }catch(e){}
+    if(!l.length) l.push({name:'My World',seed:settings.seed||'voxelcraft',t:0});
+  }
+  WORLDS=l.filter(w=>w&&typeof w.seed==='string').slice(0,MAXW);
+}
+function wSave(){ try{ localStorage.setItem(worldsKey(),JSON.stringify(WORLDS)); }catch(e){} }
+function wRender(){
+  const L=$('wlist'); L.innerHTML=''; const cur=$('seed').value;
+  WORLDS.forEach(w=>{
+    const r=document.createElement('div'); r.className='wrow'+(w.seed===cur?' sel':'');
+    const n=document.createElement('div'); n.className='wn'; n.textContent=w.name||w.seed;
+    const sm=document.createElement('small'); sm.textContent='seed: '+w.seed+(w.t?' · played '+new Date(w.t).toLocaleDateString():' · new'); n.appendChild(sm);
+    const d=document.createElement('button'); d.className='alt'; d.textContent='🗑'; d.title='Delete this world';
+    let armed=false; d.onclick=e=>{ e.stopPropagation(); if(!armed){ armed=true; d.textContent='Sure?'; setTimeout(()=>{armed=false;d.textContent='🗑';},3000); return; }
+      try{ localStorage.removeItem(worldKey(w.seed)); }catch(er){}
+      WORLDS=WORLDS.filter(x=>x!==w); if(!WORLDS.length) WORLDS.push({name:'My World',seed:'voxelcraft',t:0});
+      if($('seed').value===w.seed) $('seed').value=WORLDS[0].seed; wSave(); wRender(); ui.toast('World deleted'); };
+    r.append(n,d); r.onclick=()=>{ $('seed').value=w.seed; saveSettings(); wRender(); };
+    L.appendChild(r);
+  });
+  $('wcount').textContent='('+WORLDS.length+'/'+MAXW+')';
+  const full=WORLDS.length>=MAXW; const nb=$('wnewbtn'); nb.textContent=full?'World limit reached (10/10) - delete one to add more':'+ Create new world'; nb.disabled=full; nb.style.opacity=full?.5:1;
+}
+function initWorlds(){
+  wLoad();
+  if(!WORLDS.some(w=>w.seed===$('seed').value)) $('seed').value=WORLDS[0].seed;
+  wRender();
+  $('wnewbtn').onclick=()=>{ if(WORLDS.length>=MAXW) return; $('wnew-box').classList.add('open'); $('wname').value=''; $('wseed').value=''; $('wname').focus(); };
+  $('wcancel').onclick=()=>$('wnew-box').classList.remove('open');
+  $('wcreate').onclick=()=>{
+    if(WORLDS.length>=MAXW){ ui.toast('You can have up to 10 worlds'); return; }
+    let sd=$('wseed').value.trim(); if(!sd) sd='w'+Math.random().toString(36).slice(2,9);
+    let base=sd,i=2; while(WORLDS.some(w=>w.seed===sd)) sd=base+'-'+(i++);
+    const nm=$('wname').value.trim()||('World '+(WORLDS.length+1));
+    WORLDS.push({name:nm,seed:sd,t:0}); $('seed').value=sd; wSave(); saveSettings(); wRender(); $('wnew-box').classList.remove('open');
+    ui.toast('Created "'+nm+'" - press Play'); };
+}
+initWorlds(); window.__wReady=true;
+function wTouch(seed){ const w=WORLDS.find(x=>x.seed===seed); if(w){ w.t=Date.now(); wSave(); } }
+
 
 function enableFallback(){ if(!input.fallback&&!input.locked){ input.fallback=true; if(!touchOn) ui.toast('Mouse capture unavailable: move the mouse or use arrow keys to look. Open the file in a normal browser tab for full mouse look.'); } }
 function lockPointer(){ try{ const p=canvas.requestPointerLock(); if(p&&p.catch) p.catch(enableFallback); }catch(e){ enableFallback(); }
@@ -3309,7 +3371,7 @@ function doSave(silent){
   lastSave=performance.now();
   if(ok&&ACCT&&CLOUD.ready) cloudPush(world.seedStr,!silent);
 }
-$('play').onclick=()=>{ saveSettings(); startSynced($('seed').value.trim()||'default'); };
+$('play').onclick=()=>{ saveSettings(); wTouch($('seed').value); startSynced($('seed').value.trim()||'default'); };
 $('resume').onclick=resume;
 $('save').onclick=()=>{ doSave(false); };
 $('quit').onclick=async()=>{ doSave(true); if(CLOUD.ready&&ACCT&&world&&!world.mp) await cloudWithTimeout(cloudPush(world.seedStr,true),9000); location.reload(); };
